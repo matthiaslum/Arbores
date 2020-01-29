@@ -128,10 +128,15 @@ int main(int argc, const char * argv[]) {
 	if (parm.verb > 0)
 		printData(&data);
 
-	bp = createBridgePoints(data, BR_LEN);
-	printf("%i segments\n\n", bp.length);
+//	bp = createBridgePoints(data, BR_LEN);
+    struct BridgePoints bp_one = createPhaseOneBridgePoints(data);
+    struct BridgePoints bp_two = createPhaseTwoBridgePoints(data);
+    struct BridgePoints bp_three = createPhaseThreeBridgePoints(data);
+    struct BridgePoints all_bp[3] = {bp_one, bp_two, bp_three};
+
+	printf("%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
 //	printf("Segregating sites\n");
-//	printIntArray(data.segregating_sites, 1, data.n_sites, 1);
+//	printIntArray(data.segregating_sites, 1, data.n_sites,bp_one 1);
 
 	/* Read initial path from file, if file is provided */
 	if (argc >= 8) {
@@ -167,7 +172,7 @@ int main(int argc, const char * argv[]) {
 	chain[iter].data.log_prior = prior_data.density;
 	chain[iter].data.log_posterior = like_data.log_likelihood + prior_data.density;
 	deallocateLikelihood(like_data);
-	deallocatePriorData(prior_data);
+    deallocatePriorData(prior_data);
 	chain[iter].data.proposed_free_time_density = -1;
 	chain[iter].data.proposed_log_likelihood = -1;
 	chain[iter].data.proposed_log_prior = -1;
@@ -194,36 +199,43 @@ int main(int argc, const char * argv[]) {
 
 		if (segment_sampler_on == 1) {
 
-			for (int i = 0; i < bp.length; i++) {
-				chain[iter++] = segmentSampler(path, i, bp, data, parm);
-				path = chain[iter - 1].path;
-				if (parm.verb == 1)
-					printf("ITERATION %ld\n", iter);
-				else {
-					printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", iter, N);
-					fflush(stdout);
-				}
-//				appendChainTikzFile(chain[iter - 1].path, data, 0);
-//				writeTikzTexFileForTreePath(NULL, path.tree_path, path.opers, NULL, NULL, NULL,
-//						path.sites, path.rec_times, path.path_len);
+		    for (int j = 0; j <3; j++) {
 
-				if (i == bp.length - 1) {
-					chain[iter - 1].full_scan = 1;
-					mrca = timesToMRCA(path);
-					writeMrcaToFile(mrca);
-					deallocateMRCA(mrca);
-					writePathToChainFile(path);
-					full_scan_count++;
-					map(chain, iter, full_scan_count, data);
-				} else {
-					chain[iter - 1].full_scan = 0;
-				}
+		        bp = all_bp[j];
 
-				if (iter >= N)
-					break;
-//				getchar();
-			}
+                for (int i = 0; i < bp.length; i++) {
+                    if (iter ==1007){
+                        printf("hello");
+                    }
+                    chain[iter++] = segmentSampler(path, i, bp, data, parm); //creates a path for each segment, path here refers to the entire bridge.
+                    path = chain[iter - 1].path;
+                    if (parm.verb == 1)
+                        printf("ITERATION %ld\n", iter);
+                    else {
+                        printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", iter, N);
+                        fflush(stdout);
+                    }
+                    //				appendChainTikzFile(chain[iter - 1].path, data, 0);
+                    //				writeTikzTexFileForTreePath(NULL, path.tree_path, path.opers, NULL, NULL, NULL,
+                    //						path.sites, path.rec_times, path.path_len);
 
+                    if (j==2 && i == bp.length - 1) {
+                        chain[iter - 1].full_scan = 1;
+                        mrca = timesToMRCA(path);
+                        writeMrcaToFile(mrca);
+                        deallocateMRCA(mrca);
+                        writePathToChainFile(path);
+                        full_scan_count++;
+                        map(chain, iter, full_scan_count, data);
+                    } else {
+                        chain[iter - 1].full_scan = 0;
+                    }
+
+                    if (iter >= N)
+                        break;
+                    //				getchar();
+                }
+            }
 			if (iter >= N)
 				break;
 		}
@@ -232,8 +244,11 @@ int main(int argc, const char * argv[]) {
 //	closeChainTikzFile();
 
 	deallocateChain(chain, iter);
-	deleteBridgePoints(bp);
+//	deleteBridgePoints(bp);
 	deleteData(data);
+	free(bp_one.points);
+	free(bp_two.points);
+	free(bp_three.points);
 	return 0;
 }
 

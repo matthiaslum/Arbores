@@ -79,6 +79,7 @@ struct MCMCSummary segmentSampler(struct Smc path_c, int seg, struct BridgePoint
 struct SamplingSetData generateSamplingSet(struct Smc segment_c, struct Conditioning cond,
 		struct Data d);
 struct ShortVector createTreeSelector(struct Smc path, struct Data d);
+struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, struct BridgePoints bps, struct Data data);
 struct Smc createCompleteProposal(struct Smc segment, struct Smc path,
 		struct Parameters parm, struct Conditioning condition, struct Data data);
 struct Smc extendToFullSequence(struct Smc segment, struct Smc path,
@@ -94,6 +95,9 @@ struct SegmentSamplerSynchro synchroniseSegmentSampler();
 struct ShortRowSortedMtx sortedCanonMtxOfTerminalTrees(struct AdjSetUnion u);
 struct ShortRowSortedMtx sortCanonicalMtx(struct CanonicalMatrix canon_mtx);
 struct AdjacencySets createEmptyAdjacencySets(long domain_size);
+struct BridgePoints createPhaseOneBridgePoints(struct Data d);
+struct BridgePoints createPhaseTwoBridgePoints(struct Data d);
+struct BridgePoints createPhaseThreeBridgePoints(struct Data d);
 struct BridgePoints createBridgePoints(struct Data d, const int len);
 struct Smc reversePathSegment(struct Smc path);
 struct UniqueRowsWithCounts uniqueRowsWithCounts(struct ShortRowSortedMtx canon);

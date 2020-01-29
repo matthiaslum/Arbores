@@ -252,6 +252,110 @@ struct Smc extractAndReverseSegment(struct Smc path, struct Conditioning cond) {
 	return out;
 }
 
+struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, struct BridgePoints bps, struct Data data){
+    int initial_site, terminal_site; //might need to change to longs.
+    struct FindResult sites;
+    struct Smc out;
+    struct ShortVector selector;
+    short n_global = 0;
+
+    //might need to change to Cond for faster performance.
+    sites = findSegmentSites(data, bps.points[seg]);
+    initial_site = data.segregating_sites[bps.points[seg].start];
+    terminal_site = data.segregating_sites[bps.points[seg].end];
+
+    //To find the starting and ending point for the new segment in the new path
+    int new_segment_start, new_segment_end, continuation;
+    for (i = 0; i < new_path.path_len; i++){
+        if (new_path.sites[i] >= initial_site){
+            new_segment_start = i;
+            continuation = i+1;
+            break;
+        }
+    }
+    for (i = continuation; i <new_path.path_len; i++){
+        if (new_path.sites[i] >= terminal_site){
+            new_segment_end = i;
+            break;
+        }
+    }
+
+    //To find leftmost-portion of old path to keep
+    int start = 0; int dynamic_end = 0;
+    for (i = 0; i < old_path.path_len; i++){
+        if (old_path.sites[i] >= initial_site){
+            dynamic_end =i;
+            continuation = i+1;
+            break;
+        }
+    }
+
+    //To find rightmost-portion of old path to keep
+    int dynamic_start = old_path.path_len; int end = old_path.path_len;
+    for (i= continuation; i < old_path.path_len; i++){
+        if (old_path.sites[i] >= terminal_site){
+            dynamic_start = i;
+        }
+    }
+    //PICTORIALLY:
+    //old_path = ////////////--------------\\\\\
+    //new_path = -------------************------
+    //out_path =  ////////////************\\\\\\
+
+    //The right-most portion of old_path should contain the last site of which a recombination op which does not exist.
+    //Adding left-most portion of old-path, followed by new segment of new path, then right-most portion of old-path
+
+    int counter = 0;
+    /* before the segment */
+    for (i = start; i < dynamic_end; i++){
+        out.tree_path[counter] = createCopy(old_path.tree_path[i]);
+        out.opers[counter] = createOperationCopy(old_path.opers[i]);
+        out.rec_times[counter] = old_path.rec_times[i];
+        out.sites[counter] = old_path.sites[i];
+        counter++;
+    }
+
+    /* segment,
+     * the first entry of the segment is copied, but not the terminal tree site
+     */
+    for (i = new_segment_start; i < new_segment_end; i++){
+        out.tree_path[counter] = createCopy(new_path.tree_path[i]);
+        out.opers[counter] = createOperationCopy(new_path.opers[i]);
+        out.rec_times[counter] = new_path.rec_times[i];
+        out.sites[counter] = new_path.sites[i];
+        counter++;
+    }
+
+    /* After the segment */
+    for (i = dynamic_start; i <(end-1); i++){
+        out.tree_path[counter] = createCopy(old_path.tree_path[i]);
+        out.opers[counter] = createOperationCopy(old_path.opers[i]);
+        out.rec_times[counter] = old_path.rec_times[i];
+        out.sites[counter] = old_path.sites[i];
+        counter++;
+    }
+
+    /* Last tree/site, but no recombination op */
+    int last = end - 1;
+    out.tree_path[counter] = createCopy(old_path.tree_path[last]);
+    out.opers[counter] = createOperationCopy(old_path.opers[last]);
+    out.rec_times[counter] = old_path.rec_times[last];
+    out.sites[counter] = old_path.sites[last];
+    out.path_len = counter + 1;
+
+    /* recalculate the global indexing */
+    for (int i = 0; i < out.path_len; i++)
+        assignGlobalIndices(out.global_index, &n_global, i, out.tree_path);
+
+    selector = createTreeSelector(out, data);
+    out.tree_selector = selector.v;
+    out.selector_length = (int) selector.length;
+
+    deallocatePath(new_path);
+    deallocatePath(old_path);
+    return out;
+}
+
 struct Smc extendToFullSequence(struct Smc segment, struct Smc path,
 		struct Conditioning cond, struct Data data) {
 
@@ -1694,6 +1798,116 @@ struct Data augmentWithNonSegregatingSites(struct Data data, struct Smc path) {
 	}
 	return data;
 }
+
+struct BridgePoints createPhaseOneBridgePoints(struct Data d) {
+    struct BridgePoints bps_one;
+    struct BridgePoint *bp_one;
+
+    bp_one = malloc(sizeof(struct BridgePoint)*7);
+    bp_one[0].start = 0; bp_one[0].end = 2;
+    bp_one[1].start = 2; bp_one[1].end = 5;
+    bp_one[2].start = 5; bp_one[2].end = 9;
+    bp_one[3].start = 9; bp_one[3].end = 13;
+    bp_one[4].start = 13; bp_one[4].end = 17;
+    bp_one[5].start = 17; bp_one[5].end = 21;
+    bp_one[6].start = 21; bp_one[6].end = 24;
+
+    bps_one.points = bp_one;
+    bps_one.length = 7;
+
+    return bps_one;
+}
+
+
+struct BridgePoints createPhaseTwoBridgePoints(struct Data d) {
+    struct BridgePoints bps_two;
+    struct BridgePoint *bp_two;
+
+    bp_two = malloc(sizeof(struct BridgePoint)*6);
+    bp_two[0].start = 0; bp_two[0].end = 4;
+    bp_two[1].start = 4; bp_two[1].end = 8;
+    bp_two[2].start = 8; bp_two[2].end = 12;
+    bp_two[3].start = 12; bp_two[3].end = 16;
+    bp_two[4].start = 16; bp_two[4].end = 20;
+    bp_two[5].start = 20; bp_two[5].end = 24;
+
+    bps_two.points = bp_two;
+    bps_two.length = 6;
+
+    return bps_two;
+}
+
+struct BridgePoints createPhaseThreeBridgePoints(struct Data d) {
+    struct BridgePoints bps_three;
+    struct BridgePoint *bp_three;
+
+    bp_three = malloc(sizeof(struct BridgePoint)*7);
+    bp_three[0].start = 0; bp_three[0].end = 3;
+    bp_three[1].start = 3; bp_three[1].end = 7;
+    bp_three[2].start = 7; bp_three[2].end = 11;
+    bp_three[3].start = 11; bp_three[3].end = 15;
+    bp_three[4].start = 15; bp_three[4].end = 19;
+    bp_three[5].start = 19; bp_three[5].end = 22;
+    bp_three[6].start = 22; bp_three[6].end = 24;
+
+    bps_three.points = bp_three;
+    bps_three.length = 7;
+
+    return bps_three;
+}
+
+//Old phase 3
+//struct BridgePoints createPhaseThreeBridgePoints(struct Data d) {
+//    struct BridgePoints bps_three;
+//    struct BridgePoint *bp_three;
+//
+//    bp_three = malloc(sizeof(struct BridgePoint)*6);
+//    bp_three[0].start = 0; bp_three[0].end = 3;
+//    bp_three[1].start = 3; bp_three[1].end = 7;
+//    bp_three[2].start = 7; bp_three[2].end = 11;
+//    bp_three[3].start = 11; bp_three[3].end = 14;
+//    bp_three[4].start = 14; bp_three[4].end = 19;
+//    bp_three[5].start = 19; bp_three[5].end = 24;
+//
+//    bps_three.points = bp_three;
+//    bps_three.length = 6;
+//
+//    return bps_three;
+//}
+
+//struct BridgePoints createPhaseTwoBridgePoints(struct Data d) {
+//    struct BridgePoints bps_two;
+//    struct BridgePoint *bp_two;
+//
+//    bp_two = malloc(sizeof(struct BridgePoint)*4);
+//    bp_two[0].start = 0; bp_two[0].end = 6;
+//    bp_two[1].start = 6; bp_two[1].end = 12;
+//    bp_two[2].start = 12; bp_two[2].end = 18;
+//    bp_two[3].start = 18; bp_two[3].end = 24;
+//
+//    bps_two.points = bp_two;
+//    bps_two.length = 4;
+//
+//    return bps_two;
+//}
+
+//struct BridgePoints createPhaseThreeBridgePoints(struct Data d) {
+//    struct BridgePoints bps_three;
+//    struct BridgePoint *bp_three;
+//
+//    bp_three = malloc(sizeof(struct BridgePoint)*5);
+//    bp_three[0].start = 0; bp_three[0].end = 4;
+//    bp_three[1].start = 4; bp_three[1].end = 9;
+//    bp_three[2].start = 9; bp_three[2].end = 13;
+//    bp_three[3].start = 13; bp_three[3].end = 19;
+//    bp_three[4].start = 19; bp_three[4].end = 24;
+//
+//    bps_three.points = bp_three;
+//    bps_three.length = 5;
+//
+//    return bps_three;
+//}
+
 struct BridgePoints createBridgePoints(struct Data d, const int len) {
 
 	struct BridgePoints bps;
