@@ -1,6 +1,7 @@
 /*
  * MCMCutils.c
- *
+ * Includes parallel functions
+ 
  *  Created on: 14.11.2016
  *      Author: heine
  *  Written by Kari Heine.
