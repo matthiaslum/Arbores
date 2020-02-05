@@ -1,3 +1,5 @@
+
+
 /*
  * main.c
  *
@@ -74,59 +76,59 @@ void deleteData(struct Data d);
 
 int main(int argc, const char * argv[]) {
 
-	char *filename;
-	struct Data data;
-	struct Smc path;
-	struct BridgePoints bp;
-	struct MCMCSummary *chain;
-	struct Parameters parm;
-	struct LikelihoodData like_data;
-	struct SmcPriorData prior_data;
-	struct MRCA mrca;
-	long N, iter = 0, full_scan_count = 0;
-	short segment_sampler_on = 1;
+    char *filename;
+    struct Data data;
+    struct Smc path;
+    struct BridgePoints bp;
+    struct MCMCSummary *chain;
+    struct Parameters parm;
+    struct LikelihoodData like_data;
+    struct SmcPriorData prior_data;
+    struct MRCA mrca;
+    long N, iter = 0, full_scan_count = 0;
+    short segment_sampler_on = 1;
 
-	printf("Arbores algorithm for simulating ancestral recombination graphs ");
-	printf("conditional of observed DNA polymorphism data.\n");
-	printf("Copyright (c) 2016, Kari Heine, Maria De Iorio, Alex Beskos, Ajay Jasra, David Balding\n\n");
+    printf("Arbores algorithm for simulating ancestral recombination graphs ");
+    printf("conditional of observed DNA polymorphism data.\n");
+    printf("Copyright (c) 2016, Kari Heine, Maria De Iorio, Alex Beskos, Ajay Jasra, David Balding\n\n");
 
-	if (argc < 6) {
-		printf("Incorrect number of arguments. See instructions for help.\n");
-		return 0;
-	}
+    if (argc < 6) {
+        printf("Incorrect number of arguments. See instructions for help.\n");
+        return 0;
+    }
 
-	filename = (char *) argv[1];
-	N = (long) atol(argv[2]);
-	parm.mu = (double) atof(argv[3]); //1.3e-6;
-	parm.rho = (double) atof(argv[4]); //3.5e-7;
-	parm.n_eff = 1; //atoi(argv[5]); // 10000;
-	init_genrand((unsigned long) atoi(argv[5]));
-	result_folder = (char*) argv[6];
+    filename = (char *) argv[1];
+    N = (long) atol(argv[2]);
+    parm.mu = (double) atof(argv[3]); //1.3e-6;
+    parm.rho = (double) atof(argv[4]); //3.5e-7;
+    parm.n_eff = 1; //atoi(argv[5]); // 10000;
+    init_genrand((unsigned long) atoi(argv[5]));
+    result_folder = (char*) argv[6];
 
-	parm.verb = 0;
+    parm.verb = 0;
 
-	mkdir(result_folder, S_IRWXU);
-	createResultFullPahts(result_folder);
+    mkdir(result_folder, S_IRWXU);
+    createResultFullPahts(result_folder);
 
-	/* Read a data file */
-	data = readData(filename);
+    /* Read a data file */
+    data = readData(filename);
 
-	if(data.n_sites >= 30) {
-		printf("WARNING: More than 30 recombinations within the data may cause the algorithm be inaccurate or unstable.\n");
-		printf("Press any key to continue (or Crtl+C to quit).\n");
-		getchar();
-	}
-	if (parm.verb > 0 && data.M != NULL)
-		printData(&data);
+    if(data.n_sites >= 30) {
+        printf("WARNING: More than 30 recombinations within the data may cause the algorithm be inaccurate or unstable.\n");
+        printf("Press any key to continue (or Crtl+C to quit).\n");
+        getchar();
+    }
+    if (parm.verb > 0 && data.M != NULL)
+        printData(&data);
 
-	path = initialisation(data, parm);
+    path = initialisation(data, parm);
 
-	/* If initialization introduces recombinations at sites that are not
-	 * segregating, include non-segregating sites as segregating
-	 * and augment the data accordingly. */
-	data = augmentWithNonSegregatingSites(data, path);
-	if (parm.verb > 0)
-		printData(&data);
+    /* If initialization introduces recombinations at sites that are not
+     * segregating, include non-segregating sites as segregating
+     * and augment the data accordingly. */
+    data = augmentWithNonSegregatingSites(data, path);
+    if (parm.verb > 0)
+        printData(&data);
 
 //	bp = createBridgePoints(data, BR_LEN);
     struct BridgePoints bp_one = createPhaseOneBridgePoints(data);
@@ -134,80 +136,153 @@ int main(int argc, const char * argv[]) {
     struct BridgePoints bp_three = createPhaseThreeBridgePoints(data);
     struct BridgePoints all_bp[3] = {bp_one, bp_two, bp_three};
 
-	printf("%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
+    printf("%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
 //	printf("Segregating sites\n");
 //	printIntArray(data.segregating_sites, 1, data.n_sites,bp_one 1);
 
-	/* Read initial path from file, if file is provided */
-	if (argc >= 8) {
-		createInitFilePath((char *) argv[7]);
-		deallocatePath(path);
-		path = readInitialisationFileRowFormat(data);
-		printf("Initialisation read from a file.\n");
-	}
+    /* Read initial path from file, if file is provided */
+    if (argc >= 8) {
+        createInitFilePath((char *) argv[7]);
+        deallocatePath(path);
+        path = readInitialisationFileRowFormat(data);
+        printf("Initialisation read from a file.\n");
+    }
 
-	assert(checkTreePathCompletely(path) == 1);
-	assert(checkCompatibility(path, data) == 1);
+    assert(checkTreePathCompletely(path) == 1);
+    assert(checkCompatibility(path, data) == 1);
 
-	/* main loop */
-	chain = malloc(sizeof(struct MCMCSummary) * N);
-	removeMRCAFile();
-	removeChainFile();
+    /* main loop */
+    chain = malloc(sizeof(struct MCMCSummary) * N);
+    removeMRCAFile();
+    removeChainFile();
 
-	chain[iter].path = path;
-	chain[iter].full_scan = 0;
-	chain[iter].data.accept_indicator = 1;
-	chain[iter].data.alpha = 1;
-	chain[iter].data.cardinality_ratio = 1;
-	chain[iter].data.current_free_time_density = -1;
-	chain[iter].data.current_log_likelihood = -1;
-	chain[iter].data.current_log_prior = -1;
-	chain[iter].data.current_number_of_free_times = -1;
-	chain[iter].data.current_recombination_density = -1;
-	chain[iter].data.irreducibility = 0;
-	chain[iter].data.jitter_step = 0;
-	like_data = likelihood(path, data, parm);
-	chain[iter].data.log_likelihood = like_data.log_likelihood;
-	prior_data = smcprior(path, parm, data);
-	chain[iter].data.log_prior = prior_data.density;
-	chain[iter].data.log_posterior = like_data.log_likelihood + prior_data.density;
-	deallocateLikelihood(like_data);
+    chain[iter].path = path;
+    chain[iter].full_scan = 0;
+    chain[iter].data.accept_indicator = 1;
+    chain[iter].data.alpha = 1;
+    chain[iter].data.cardinality_ratio = 1;
+    chain[iter].data.current_free_time_density = -1;
+    chain[iter].data.current_log_likelihood = -1;
+    chain[iter].data.current_log_prior = -1;
+    chain[iter].data.current_number_of_free_times = -1;
+    chain[iter].data.current_recombination_density = -1;
+    chain[iter].data.irreducibility = 0;
+    chain[iter].data.jitter_step = 0;
+    like_data = likelihood(path, data, parm);
+    chain[iter].data.log_likelihood = like_data.log_likelihood;
+    prior_data = smcprior(path, parm, data);
+    chain[iter].data.log_prior = prior_data.density;
+    chain[iter].data.log_posterior = like_data.log_likelihood + prior_data.density;
+    deallocateLikelihood(like_data);
     deallocatePriorData(prior_data);
-	chain[iter].data.proposed_free_time_density = -1;
-	chain[iter].data.proposed_log_likelihood = -1;
-	chain[iter].data.proposed_log_prior = -1;
-	chain[iter].data.proposed_number_of_free_times = -1;
-	chain[iter].data.proposed_number_of_recombinations = countRecombinations(path);
-	chain[iter].data.proposed_recombination_density = -1;
-	iter++;
+    chain[iter].data.proposed_free_time_density = -1;
+    chain[iter].data.proposed_log_likelihood = -1;
+    chain[iter].data.proposed_log_prior = -1;
+    chain[iter].data.proposed_number_of_free_times = -1;
+    chain[iter].data.proposed_number_of_recombinations = countRecombinations(path);
+    chain[iter].data.proposed_recombination_density = -1;
+    iter++;
 
 //	writeStateToFile(chain,NULL,1);
-	writePathToChainFile(path);
+    writePathToChainFile(path);
+
+    struct Smc old_path;
+    struct Smc path_p;
+    struct Smc combined_path;
+    struct MCMCSummary_modified temp_summary;
+    struct MCMCSummary out;
+    struct MCMCDiagnostics dgn;
+    struct ShortVector selector;
+    struct LikelihoodData like;
+    struct SmcPriorData prior;
 
 //	initChainTikzFile(chain[iter - 1].path, data);
-	if (parm.verb == 0)
-		printf("                     ");
-	while (true) {
+    if (parm.verb == 0)
+        printf("                     ");
+    while (true) {
 
-		iter = jittering(chain, iter, N, parm, data);
-		if (parm.verb == 1)
-			printf("ITERATION %ld\n", iter);
-		path = chain[iter - 1].path;
+        iter = jittering(chain, iter, N, parm, data);
+        if (parm.verb == 1)
+            printf("ITERATION %ld\n", iter);
+//        path = chain[iter - 1].path;
 
-		if (iter >= N)
-			break;
+        if (iter >= N)
+            break;
 
-		if (segment_sampler_on == 1) {
+        //variables needed, old_path, combined_path, new_segment, MCMCsummary, diagnostics;
+        if (segment_sampler_on == 1) {
 
-		    for (int j = 0; j <3; j++) {
+            for (int j = 0; j <3; j++) {
 
-		        bp = all_bp[j];
+                bp = all_bp[j];
+
+//                deallocatePath(old_path);
+//                deallocatePath(combined_path);
+
+                old_path = chain[iter-1].path;
+                combined_path = createPathCopy(old_path);
 
                 for (int i = 0; i < bp.length; i++) {
-                    if (iter ==1007){
-                        printf("hello");
-                    }
-                    chain[iter++] = segmentSampler(path, i, bp, data, parm); //creates a path for each segment, path here refers to the entire bridge.
+
+//                    chain[iter++] = segmentSampler(path, i, bp, data, parm); //return segment and conditioning that's important
+                    temp_summary = truncatedSegmentSampler(old_path, i, bp, data, parm);
+
+                    //new_segment, oldsegment, conditioning
+                    //generate complete proposal
+                    //generate alpha
+                    //generate diagnostics
+                    //UPDATE PATH WITH IT
+
+                    path_p = createCompleteProposal(temp_summary.new_segment, combined_path, parm, temp_summary.condition, data);
+                    assert(checkCompatibility(path_p, data) == 1);
+
+                    dgn = calculateAlpha(temp_summary.new_segment, path_p, temp_summary.old_segment, combined_path, data, parm, temp_summary.condition,
+                                         temp_summary.card_ratio);
+
+                    dgn.u = genrand_real3();
+                    dgn.accept_indicator = dgn.u < dgn.alpha ? 1 : 0;
+                    dgn.proposed_number_of_recombinations = countRecombinations(path_p);
+                    dgn.current_number_of_recombinations = countRecombinations(combined_path);
+
+                    if (dgn.accept_indicator == 1) // accept
+                        combined_path = createPathCopy2(path_p);
+                    else
+                        combined_path = createPathCopy2(combined_path);
+
+                    assert(checkTreePathCompletely(combined_path) == 1);
+                    assert(checkOperations(combined_path) == 1);
+                    combined_path = removeNoOps(combined_path);
+                    assert(checkOperations(combined_path) == 1);
+
+                    if (combined_path.tree_selector != NULL)
+                        free(combined_path.tree_selector);
+                    selector = createTreeSelector(combined_path, data);
+                    combined_path.selector_length = (int) selector.length;
+                    combined_path.tree_selector = selector.v;
+
+                    dgn.jitter_step = 0;
+
+                    like = likelihood(combined_path, data, parm);
+                    dgn.log_likelihood = like.log_likelihood;
+                    prior = smcprior(combined_path, parm, data);
+                    dgn.log_prior = prior.density;
+                    deallocatePriorData(prior);
+                    dgn.log_posterior = dgn.log_likelihood + dgn.log_prior;
+                    deallocateLikelihood(like);
+                    dgn.irreducibility = temp_summary.irreducibility;
+
+
+                    free(temp_summary.condition.M);
+                    free(temp_summary.condition.sites);
+                    deallocatePath(temp_summary.old_segment);
+                    deallocatePath(temp_summary.new_segment);
+                    deallocatePath(path_p);
+
+                    out.data = dgn;
+                    out.path = createPathCopy(combined_path);
+                    chain[iter] = out;
+                    iter++;
+
                     path = chain[iter - 1].path;
                     if (parm.verb == 1)
                         printf("ITERATION %ld\n", iter);
@@ -236,41 +311,40 @@ int main(int argc, const char * argv[]) {
                     //				getchar();
                 }
             }
-			if (iter >= N)
-				break;
-		}
-	}
+            if (iter >= N)
+                break;
+        }
+    }
 
 //	closeChainTikzFile();
 
-	deallocateChain(chain, iter);
+    deallocateChain(chain, iter);
 //	deleteBridgePoints(bp);
-	deleteData(data);
-	free(bp_one.points);
-	free(bp_two.points);
-	free(bp_three.points);
-	return 0;
+    deleteData(data);
+    free(bp_one.points);
+    free(bp_two.points);
+    free(bp_three.points);
+    return 0;
 }
 
 void deallocateChain(struct MCMCSummary *chain, long iter) {
-	for (int i = 0; i < iter; i++) {
-		deallocatePath(chain[i].path);
-		deallocateDiagnostics(chain[i].data);
-	}
-	free(chain);
+    for (int i = 0; i < iter; i++) {
+        deallocatePath(chain[i].path);
+        deallocateDiagnostics(chain[i].data);
+    }
+    free(chain);
 }
 
 void deallocateDiagnostics(struct MCMCDiagnostics diag) {
-	return;
+    return;
 }
 
 void deleteBridgePoints(struct BridgePoints bp) {
-	free(bp.points);
+    free(bp.points);
 }
 
 void deleteData(struct Data d) {
-	free(d.M);
-	free(d.name);
-	free(d.segregating_sites);
+    free(d.M);
+    free(d.name);
+    free(d.segregating_sites);
 }
-
