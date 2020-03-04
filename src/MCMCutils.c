@@ -165,7 +165,7 @@ struct MCMCSummary segmentSampler(struct Smc path_c, int seg, struct BridgePoint
 	deallocateLikelihood(like);
 	dgn.irreducibility = irreducibility;
 
-	writeDiagnosticsFile(dgn);
+    writeDiagnosticsFile(dgn);
 
 	out.data = dgn;
 
@@ -178,6 +178,119 @@ struct MCMCSummary segmentSampler(struct Smc path_c, int seg, struct BridgePoint
 
 	return out;
 }
+
+struct segment_output truncatedSegmentSampler(struct Smc path_c, int seg, struct BridgePoints bps,
+                                              struct Data data, struct Parameters parm) {
+
+    struct segment_output out;
+    struct Conditioning condition;
+    struct SamplingSet set;
+    struct SamplingSetData sampling_set_data;
+    struct Smc sgmnt_p, sgmnt_c, sgmnt_c_with_times, sampled_path;
+    long pick;
+    double card_ratio;
+    short irreducibility = 0;
+    struct ShortVector selector_p;
+    struct ShortVector selector_c;
+    struct ShortVector selector_c_with_times;
+
+    verbose = parm.verb;
+
+    assert(checkOperations(path_c) == 1);
+
+    condition = prepareConditioning(seg, bps, data, path_c);
+
+    if (verbose == 1)
+        printSegmentPreamble(condition, data);
+
+    /* We extract a path segment from the current full path and reverse it if we are
+     * in the first segment. This makes the segment comparable with the proposed
+     * segment, which we generate in the reversed direction. */
+    sgmnt_c = extractAndReverseSegment(path_c, condition);
+    assert(checkOperations(sgmnt_c) == 1);
+
+    sampling_set_data = generateSamplingSet(sgmnt_c, condition, data);
+    set = sampling_set_data.set;
+
+    if (verbose == 1)
+        printf("Sampling set cardinalities: %ld %ld\n", set.set_cardinalities[0],
+               set.set_cardinalities[1]);
+
+    /* in standard setting the sampling set is not empty */
+    if (*set.n_paths > 0) {
+
+        pick = drawPathIndex(set);
+        card_ratio = calculateCardinalityRatio(sampling_set_data, pick);
+        sampled_path = set.paths[pick];
+
+    } else {
+        // empty sampling set, the segment is that of the input
+//		printf("Empty sampling set\n");
+        sampled_path = sgmnt_c;
+        card_ratio = (double) 1;
+        irreducibility = 1;
+    }
+    assert(checkTreePathCompletely(sampled_path) == 1);
+
+    if (condition.backward == 1) {
+        // turn the right way
+        sgmnt_p = reversePathSegment(createPathCopy(sampled_path));
+        assert(checkOperations(sgmnt_p) == 1);
+    } else {
+        sgmnt_p = createPathCopy(sampled_path);
+    }
+    assert(checkTreePathCompletely(sgmnt_p) == 1);
+
+    /* free time generation */
+    if (condition.backward == 1)
+        initialTimeProposal(sgmnt_p, parm, 1);
+    else
+        freetimes(sgmnt_p, parm, condition, 1);
+
+    recombinationTimes(sgmnt_p, 1);
+    assert(checkRecombinationTimes(sgmnt_p) == 1);
+
+    //create tree selectors for segments
+    selector_p = createTreeSelector(sgmnt_p, data);
+    sgmnt_p.selector_length = (int) selector_p.length;
+    sgmnt_p.tree_selector = selector_p.v;
+
+    selector_c = createTreeSelector(sgmnt_c, data);
+    sgmnt_c.selector_length = (int) selector_c.length;
+    sgmnt_c.tree_selector = selector_c.v;
+
+    sgmnt_c_with_times = extractSegment(path_c, condition);
+    selector_c_with_times = createTreeSelector(sgmnt_c_with_times, data);
+    sgmnt_c_with_times.selector_length = (int) selector_c_with_times.length;
+    sgmnt_c_with_times.tree_selector = selector_c_with_times.v;
+
+    double alpha = calculateAlphaModified(sgmnt_p, sgmnt_c, sgmnt_c_with_times, data, parm, condition, card_ratio);
+
+    double u = genrand_real3();
+
+    out.accept_indicator = u < alpha ? 1 : 0;
+
+    if (out.accept_indicator == 1) // accept
+        out.new_segment = createPathCopy2(sgmnt_p);
+    else{
+        out.new_segment = createPathCopy2(sgmnt_c_with_times);
+//        if (condition.backward ==1) {
+//            out.new_segment = reversePathSegment(createPathCopy2(sgmnt_c));
+//        }
+//        else{
+//            out.new_segment = createPathCopy2(sgmnt_c);
+//        }
+    }
+    free(condition.M);
+    free(condition.sites);
+    deallocateSamplingSet(set);
+    deallocatePath(sgmnt_c);
+    deallocatePath(sgmnt_c_with_times);
+    deallocatePath(sgmnt_p);
+
+    return out;
+}
+
 
 long drawPathIndex(struct SamplingSet set) {
 
@@ -228,6 +341,21 @@ double calculateCardinalityRatio(struct SamplingSetData ss_data, long pick) {
 	}
 }
 
+struct Smc extractSegment(struct Smc path, struct Conditioning cond){
+    struct Smc out;
+    struct LongVector sites;
+
+    assert(path.selector_length>0 && path.tree_selector != NULL);
+    sites = getSites(cond);
+
+    out = extractToSites(path, sites);
+
+    free(sites.values);
+
+    return out;
+
+}
+
 struct Smc extractAndReverseSegment(struct Smc path, struct Conditioning cond) {
 
 	struct Smc out;
@@ -250,6 +378,125 @@ struct Smc extractAndReverseSegment(struct Smc path, struct Conditioning cond) {
 	assignFreeTimeIndicators(out, cond);
 
 	return out;
+}
+
+struct Conditioning_array_version copyConditioningToArray(struct Conditioning condition){
+    struct Conditioning_array_version out;
+    copyTreeToTreeArray(condition.tl, &out.tl);
+    copyTreeToTreeArray(condition.tr, &out.tr);
+    out.n_seq = condition.n_seq;
+    out.length = condition.length;
+    out.backward = condition.backward;
+    out.twosided = condition.twosided;
+    for (int i =0; i < out.length; i++){
+        out.sites[i] = condition.sites[i];
+    }
+    for (int i =0; i< (out.length * out.n_seq); i++){
+        out.M[i] = condition.M[i];
+    }
+    return out;
+}
+
+struct Conditioning copyConditioning(struct Conditioning_array_version condition){
+    struct Conditioning out;
+    out.tl = createCopyFromTreeArray(condition.tl);
+    out.tr = createCopyFromTreeArray(condition.tr);
+    out.n_seq = condition.n_seq;
+    out.length = condition.length;
+    out.backward = condition.backward;
+    out.twosided = condition.twosided;
+    out.sites = malloc(sizeof(int) * out.length);
+    for (int i =0; i < out.length; i++){
+        out.sites[i] = condition.sites[i];
+    }
+    out.M = malloc(sizeof(short) * (out.n_seq * out.length));
+    for (int j = 0; j < (out.n_seq * out.length); j++){
+        out.M[j] = condition.M[j];
+    }
+    return out;
+}
+
+struct arraySegmentOutput convertSegmentOutputToArray (struct segment_output output,  struct arraySegmentOutput * array_version){
+    struct arraySegmentOutput output_array;
+    output_array.new_segment = convertPathToArray(output.new_segment, &(array_version->new_segment));
+    output_array.accept_indicator = output.accept_indicator;
+
+    return output_array;
+}
+
+struct Smc combineSegments( struct arraySegmentOutput *new_segments, int len, struct Data data){
+
+    struct Smc out;
+    short n_global = 0;
+    struct ShortVector selector;
+
+    int output_path_length = 0;
+    for (int i =0; i < len; i++){
+        output_path_length += (new_segments[i].new_segment.path_len-1);
+        assert(new_segments[i].new_segment.rec_times!= NULL);
+    }
+    //For the last tree
+    output_path_length += 1;
+    out = createPath(output_path_length);
+    out.path_len = output_path_length;
+    out.selector_length = 0;
+
+//    int segment_length;
+    struct Smc_array_version * first_segment = &(new_segments[0].new_segment);
+
+    //For the first segment, leave out the last entry of the segment
+    long out_i = 0;
+    for (int i = 0; i< first_segment->path_len - 1; i++) {
+        out.tree_path[out_i] = createCopyFromTreeArray(first_segment->tree_path[i]);
+        out.opers[out_i] = createOperationCopy(first_segment->opers[i]);
+        out.rec_times[out_i] = first_segment->rec_times[i];
+        out.sites[out_i] = first_segment->sites[i];
+        out_i++;
+    }
+
+//    int last_index_of_prev_segment = out_i;
+//    struct Smc_array_version * previous_segment = first_segment;
+
+    //For the 2nd segment up till the second last segment
+    for (int segment_i = 1; segment_i < (len-1); segment_i++){
+        struct Smc_array_version * segment = &(new_segments[segment_i].new_segment);
+        for (int i = 0; i < (segment->path_len-1); i++){
+            out.tree_path[out_i] = createCopyFromTreeArray(segment->tree_path[i]);
+            out.opers[out_i] = createOperationCopy(segment->opers[i]);
+            out.rec_times[out_i] = segment->rec_times[i];
+            out.sites[out_i] = segment->sites[i];
+            out_i += 1;
+        }
+//        out.sites[last_index_of_prev_segment] = previous_segment.sites[(previous_segment.path_len-1)];
+//        previous_segment = segment;
+//        last_index_of_prev_segment = out_i;
+    }
+
+    //For the last segment
+    struct Smc_array_version * last_segment = &(new_segments[(len-1)].new_segment);
+    for (int i = 0; i < last_segment->path_len; i++){
+        if (i < (last_segment->path_len -1)){
+            out.opers[out_i] = createOperationCopy(last_segment->opers[i]);
+            out.rec_times[out_i] = last_segment->rec_times[i];
+        }
+        out.tree_path[out_i] = createCopyFromTreeArray(last_segment->tree_path[i]);
+        out.sites[out_i] = last_segment->sites[i];
+        out_i += 1;
+    }
+//    out.sites[last_index_of_prev_segment] = previous_segment.sites[(previous_segment.path_len-1)];
+
+    /* recalculate the global indexing */
+    for (int i = 0; i < out.path_len; i++)
+        assignGlobalIndices(out.global_index, &n_global, i, out.tree_path);
+
+    selector = createTreeSelector(out, data);
+    out.tree_selector = selector.v;
+    out.selector_length = (int) selector.length;
+
+//    for (int i = 0; i < len; i++){
+//        deallocatePath(new_segments[i].new_segment);
+//    }
+    return out;
 }
 
 struct Smc extendToFullSequence(struct Smc segment, struct Smc path,
@@ -432,6 +679,65 @@ struct Smc createCompleteProposal(struct Smc segment, struct Smc path,
 	complete_path = extendToFullSequence(segment, path, condition, data);
 
 	return complete_path;
+}
+
+double calculateAlphaModified(struct Smc segment_p, struct Smc segment_c, struct Smc segment_c_with_times, struct Data data, struct Parameters parm,
+                              struct Conditioning condition, double extra) {
+
+    struct LikelihoodData like_p, like_c;
+    struct SmcPriorData prior_p, prior_c;
+    struct Recombinations rec_c, rec_p;
+    double like, prior, f_p, f_c, free_time, rec_time, alpha;
+
+    /* free time generation */
+    if (condition.backward == 1) {
+
+        f_p = initialTimeProposal(segment_p, parm, 0);
+        f_c = initialTimeProposal(segment_c, parm, 0);
+    } else {
+
+        f_p = freetimes(segment_p, parm, condition, 0);
+        f_c = freetimes(segment_c, parm, condition, 0);
+    }
+    free_time = f_c / f_p;
+
+    /* recombination times */
+    rec_p = recombinationTimes(segment_p, 0);
+    rec_c = recombinationTimes(segment_c_with_times, 0);
+    rec_time = exp(rec_c.log_p - rec_p.log_p);
+
+    /* likelihood */
+    like_p = likelihood(segment_p, data, parm);
+    like_c = likelihood(segment_c_with_times, data, parm);
+    like = exp(like_p.log_likelihood - like_c.log_likelihood);
+
+    /* prior */
+    prior_p = smcprior(segment_p, parm, data);
+    prior_c = smcprior(segment_c_with_times, parm, data);
+    prior = exp(prior_p.density - prior_c.density);
+
+    /* acceptance probability */
+    alpha = like * prior * free_time * rec_time * extra;
+    alpha = alpha > 1 ? 1 : alpha;
+
+    if (verbose == 1) {
+        printf("Acceptance probability\n----------------------\n");
+        printf("%20s: %15.5e %15.5e --> %1.5f\n", "Likelihood", like_p.log_likelihood,
+               like_c.log_likelihood, like);
+        printf("%20s: %15.5e %15.5e --> %1.5f\n", "Prior", prior_p.density, prior_c.density,
+               prior);
+        printf("%20s: %15.5e %15.5e --> %1.5f\n", "Free times", f_c, f_p, free_time);
+        printf("%20s: %15.5e %15.5e --> %1.5f\n", "Recombination times", rec_c.log_p,
+               rec_p.log_p, rec_time);
+        printf("%20s: %15.5e %15.5f\n", "Extra", extra, extra);
+        printf("%20s: %15.5e %15.5f\n", "Alpha", alpha, alpha);
+    }
+    deallocateLikelihood(like_p);
+    deallocateLikelihood(like_c);
+    deallocatePriorData(prior_p);
+    deallocatePriorData(prior_c);
+
+    return alpha;
 }
 
 struct MCMCDiagnostics calculateAlpha(struct Smc segment_p, struct Smc path_p,
@@ -1209,13 +1515,36 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
 	aSets.set_size = malloc(sizeof(long) * domain_size);
 	aSets.n_active = 0;
 	aSets.n_sets = domain_size;
+	long start_index = 0;
 
 	while (aSets.n_active == 0 && length <= MAX_STEPS + 1) {
 
 		if (verbose == 1)
 			printf("\tSearching with %i operations\n\t                       ", length - 1);
 
-		for (long i = 0; i < domain_size; i++) {
+		if (domain_size > 40) {
+		    start_index = domain_size/2;
+            //Send the quota which is start_index;
+            MPI_Send(&start_index, 1, MPI_LONG, 1, 0, helper_comm);
+
+            struct Tree_array_version domain_to_send[start_index];
+            for (long i = 0; i < start_index; i++){
+                domain_to_send[i] = copyTreeToTreeArray_v2(domain[i]);
+            }
+            MPI_Send(&domain_to_send, (sizeof(struct Tree_array_version) *start_index), MPI_BYTE, 1, (-1), helper_comm);
+
+            struct Conditioning_array_version condition_to_send = copyConditioningToArray(cond);
+
+            short col = (j+1);
+            short force_to_send = forced[j];
+            short length_to_send = length;
+            MPI_Send(&condition_to_send, sizeof(struct Conditioning_array_version), MPI_BYTE, 1, (-2), helper_comm);
+            MPI_Send(&col, 1, MPI_SHORT, 1, (-3), helper_comm);
+            MPI_Send(&force_to_send, 1, MPI_SHORT, 1, (-4), helper_comm);
+            MPI_Send(&length_to_send, 1, MPI_SHORT, 1, (-5), helper_comm);
+        }
+
+		for (long i = start_index; i < domain_size; i++) {
 
 			if (verbose == 1) {
 				printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", i + 1,
@@ -1255,6 +1584,74 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
 			free(new_aSet.n_entries);
 		}
 
+		if (domain_size>40) {
+		    //RECEIVING
+		    long domain_quota = domain_size/2;
+
+		    //Things to receive back
+            long number_of_trees[domain_quota];
+            long number_of_opers[domain_quota];
+            long set_size[domain_quota];
+            long n_active_rec;
+            struct Tree_array_version * array_of_pointers_to_tree_arrays[domain_quota];
+            short * opersToRec[domain_quota];
+
+            //Receive the counts of things to receive
+            MPI_Recv(&number_of_trees, domain_quota, MPI_LONG, 1, (-6), helper_comm, MPI_STATUS_IGNORE);
+            MPI_Recv(&number_of_opers, domain_quota, MPI_LONG, 1, (-7), helper_comm, MPI_STATUS_IGNORE);
+
+            MPI_Recv(&set_size, domain_quota, MPI_LONG, 1, (-8), helper_comm, MPI_STATUS_IGNORE);
+            MPI_Recv(&n_active_rec, 1, MPI_LONG, 1, (-9), helper_comm, MPI_STATUS_IGNORE);
+            aSets.n_active += n_active_rec;
+            for (long g = 0; g < domain_quota; g++){
+                aSets.set_size[g] = set_size[g];
+            }
+
+            //Allocate the memory spaces
+            for (long domain_index = 0; domain_index < domain_quota; domain_index++) {
+                if (number_of_trees[domain_index] > 0){
+                    array_of_pointers_to_tree_arrays[domain_index] = malloc(sizeof(struct Tree_array_version) * number_of_trees[domain_index]); //to free this later
+                    aSets.tree_adj_set[domain_index] = malloc(sizeof(struct Tree) * number_of_trees[domain_index]);
+                }
+                if (number_of_opers[domain_index] > 0){
+                    opersToRec[domain_index] = malloc(sizeof(short) * number_of_opers[domain_index]); //to free this later
+                    aSets.oper_adj_set[domain_index] = malloc(sizeof(short) * number_of_opers[domain_index]);
+                }
+            }
+
+            //Receive the trees and opers
+            int tag = 0;
+            for (long domain_index =0; domain_index < domain_quota; domain_index++){
+                if (number_of_trees[domain_index] > 0)
+                    MPI_Recv(array_of_pointers_to_tree_arrays[domain_index], (sizeof(struct Tree_array_version) * number_of_trees[domain_index]), MPI_BYTE, 1, tag, helper_comm, MPI_STATUS_IGNORE);
+
+                if (number_of_opers[domain_index] > 0)
+                    MPI_Recv(opersToRec[domain_index], (sizeof(short) * number_of_opers[domain_index]), MPI_BYTE, 1, (tag+domain_quota), helper_comm, MPI_STATUS_IGNORE);
+                tag += 1;
+            }
+
+            //Synchronize the data with aSets
+            for (long i = 0; i < domain_quota; i++){
+                long num_trees = number_of_trees[i];
+                long num_opers = number_of_opers[i];
+                if (num_trees > 0 && num_opers > 0){
+                    for (long j = 0; j < num_trees; j++)
+                        aSets.tree_adj_set[i][j] = createCopyFromTreeArray(array_of_pointers_to_tree_arrays[i][j]);
+                    for (long g = 0; g < num_opers; g++)
+                        aSets.oper_adj_set[i][g] = opersToRec[i][g];
+                }
+            }
+            //Free the variables that were allocated memory
+            for (long i = 0; i < domain_quota; i++){
+                long num_trees = number_of_trees[i];
+                long num_opers = number_of_opers[i];
+                if (num_trees > 0 && num_opers > 0){
+                    free(array_of_pointers_to_tree_arrays[i]);
+                    free(opersToRec[i]);
+                }
+            }
+        }
+
 		new_site = length == 3 ? (cond.sites[j] + cond.sites[j + 1]) / 2 : -1;
 
 		aSets.length = length++;
@@ -1277,6 +1674,119 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
 		aSets.sites[2] = cond.sites[j + 1];
 	}
 	return aSets;
+}
+
+void shareWorkloadAdjacencySets(long domain_size){
+    // allocate domain memory for number of trees equal to domain_size
+    struct Tree_array_version domain[domain_size];
+    MPI_Recv(&domain, (sizeof(Tree_array_version)* domain_size), MPI_BYTE, 0, (-1), helper_comm, MPI_STATUS_IGNORE);
+
+    struct Conditioning_array_version condition_to_rec;
+    MPI_Recv(&condition_to_rec, sizeof(Conditioning_array_version), MPI_BYTE, 0, (-2), helper_comm, MPI_STATUS_IGNORE);
+    struct Conditioning cond = copyConditioning(condition_to_rec);
+
+    short col; short force_to_rec; short length_to_rec;
+    MPI_Recv(&col, 1, MPI_SHORT, 0, (-3), helper_comm, MPI_STATUS_IGNORE);
+    MPI_Recv(&force_to_rec, 1, MPI_SHORT, 0, (-4), helper_comm, MPI_STATUS_IGNORE);
+    MPI_Recv(&length_to_rec, 1, MPI_SHORT, 0, (-5), helper_comm, MPI_STATUS_IGNORE);
+
+    // do the computations
+
+    // allocate memory for trees, opers and setsize and n_active to send back
+    long number_of_trees[domain_size];
+    long number_of_opers[domain_size];
+
+    struct Tree_array_version * trees_to_send[domain_size];
+    short * opersToSend[domain_size];
+
+    long set_size[domain_size];
+    long n_active = 0;
+
+
+    struct AdjacencySet aSet, new_aSet;
+    struct AdjacencySets aSets;
+    aSets.tree_adj_set = malloc(sizeof(struct Tree *) * domain_size);
+    aSets.oper_adj_set = malloc(sizeof(short *) * domain_size);
+    aSets.set_size = malloc(sizeof(long) * domain_size);
+
+    for (long i = 0; i < domain_size; i++) {
+
+        struct Tree domain_input = createCopyFromTreeArray(domain[i]);
+        //convert the conditions too.
+        aSet = exhaustiveSearch(domain_input, cond, (short) col, force_to_rec, length_to_rec);
+        deleteTree(domain_input);
+
+        if (*aSet.n_entries > 0) {
+            new_aSet = uniqueOperationSequences(aSet);
+            for (int i = 0; i < *aSet.n_entries * aSet.length; i++)
+                deleteTree(aSet.trees[i]);
+
+            free(aSet.trees);
+            free(aSet.n_entries);
+            free(aSet.opers);
+
+            aSets.tree_adj_set[i] = new_aSet.trees;
+            aSets.oper_adj_set[i] = extract2DOperations(new_aSet.opers, *new_aSet.n_entries,
+                                                        new_aSet.length);
+
+            number_of_trees[i] = *new_aSet.n_entries * new_aSet.length;
+            number_of_opers[i] = *new_aSet.n_entries * 2 * (new_aSet.length - 1);
+
+            free(new_aSet.opers);
+            trees_to_send[i] = malloc(sizeof(struct Tree_array_version) * number_of_trees[i]);
+            opersToSend[i] = malloc(sizeof(short) * number_of_opers[i]);
+            for (int j =0; j <number_of_trees[i]; j++){
+                trees_to_send[i][j] = copyTreeToTreeArray_v2(aSets.tree_adj_set[i][j]);
+            }
+            for (int j = 0; j < number_of_opers[i]; j++){
+                opersToSend[i][j] = aSets.oper_adj_set[i][j];
+            }
+        }
+        else {
+            new_aSet = aSet;
+            aSets.tree_adj_set[i] = aSet.trees;
+            aSets.oper_adj_set[i] = aSet.opers;
+            number_of_trees[i] = 0;
+            number_of_opers[i] = 0;
+        }
+        aSets.set_size[i] = *new_aSet.n_entries;
+        set_size[i] = *new_aSet.n_entries;
+        aSets.n_active = aSets.set_size[i] > 0 ? aSets.n_active + 1 : aSets.n_active;
+        n_active = aSets.n_active;
+
+        // everything else in aSet is freed when aSets structure is freed
+        free(new_aSet.n_entries);
+    }
+    //SEND BACK THE NUMBER OF TREES AND OPERATIONS
+    MPI_Send(&number_of_trees, domain_size, MPI_LONG, 0, (-6), helper_comm);
+    MPI_Send(&number_of_opers, domain_size, MPI_LONG, 0, (-7), helper_comm);
+
+    //SEND BACK SET SIZE
+    MPI_Send(&set_size, domain_size, MPI_LONG, 0, (-8), helper_comm);
+    MPI_Send(&n_active, 1, MPI_LONG, 0, (-9), helper_comm);
+
+    //SEND THE ACTUAL TREES AND OPERATIONS ITSELF
+    int tag = 0;
+    for (long domain_index =0; domain_index < domain_size; domain_index++){
+        if (number_of_trees[domain_index] > 0)
+            MPI_Send(trees_to_send[domain_index], (sizeof(struct Tree_array_version) * number_of_trees[domain_index]), MPI_BYTE, 0, tag, helper_comm);
+
+        if (number_of_opers[domain_index] > 0)
+            MPI_Recv(opersToSend[domain_index], (sizeof(short) * number_of_opers[domain_index]), MPI_BYTE, 0, (tag+domain_size), helper_comm);
+        tag += 1;
+    }
+
+    //free the sending arrays
+    for (long i =0; i < domain_size; i++){
+        long num_trees = number_of_trees[i];
+        long num_opers = number_of_opers[i];
+        if (num_trees > 0)
+            free(trees_to_send[i]);
+        if (num_opers > 0)
+            free(opersToSend[i]);
+    }
+    free(cond.M); free(cond.sites); deleteTree(cond.tl); deleteTree(cond.tr);
+    deleteAdjacencySets(aSets);
 }
 
 short *extract2DOperations(short *op3D, long m, short length) {
@@ -1577,7 +2087,8 @@ struct Conditioning prepareConditioning(int seg, struct BridgePoints bps, struct
 
 	free(sites.indices);
 	free(sites.values);
-
+	int value = checkTree(out.tl) * (out.twosided == 1 ? checkTree(out.tr) : 1);
+//	printf("Value is %d, \n", value);
 	assert(checkTree(out.tl) * (out.twosided == 1 ? checkTree(out.tr) : 1) == 1);
 
 	return out;
@@ -1604,7 +2115,7 @@ struct ShortVector createTreeSelector(struct Smc path, struct Data d) {
 	short i_tree = 0;
 
 	max_site = d.segregating_sites[d.n_sites - 1];
-	selector.v = malloc(sizeof(short) * max_site);
+    selector.v = malloc(sizeof(short) * max_site);
 	for (int i = 0; i < max_site; i++) {
 		if (i_tree < path.path_len - 1 && i >= path.sites[i_tree + 1] - 1)
 			i_tree++;
@@ -1694,6 +2205,116 @@ struct Data augmentWithNonSegregatingSites(struct Data data, struct Smc path) {
 	}
 	return data;
 }
+
+struct BridgePoints createPhaseOneBridgePoints(struct Data d) {
+    struct BridgePoints bps_one;
+    struct BridgePoint *bp_one;
+
+    bp_one = malloc(sizeof(struct BridgePoint)*7);
+    bp_one[0].start = 0; bp_one[0].end = 2;
+    bp_one[1].start = 2; bp_one[1].end = 5;
+    bp_one[2].start = 5; bp_one[2].end = 9;
+    bp_one[3].start = 9; bp_one[3].end = 13;
+    bp_one[4].start = 13; bp_one[4].end = 17;
+    bp_one[5].start = 17; bp_one[5].end = 21;
+    bp_one[6].start = 21; bp_one[6].end = 24;
+
+    bps_one.points = bp_one;
+    bps_one.length = 7;
+
+    return bps_one;
+}
+
+
+struct BridgePoints createPhaseTwoBridgePoints(struct Data d) {
+    struct BridgePoints bps_two;
+    struct BridgePoint *bp_two;
+
+    bp_two = malloc(sizeof(struct BridgePoint)*6);
+    bp_two[0].start = 0; bp_two[0].end = 4;
+    bp_two[1].start = 4; bp_two[1].end = 8;
+    bp_two[2].start = 8; bp_two[2].end = 12;
+    bp_two[3].start = 12; bp_two[3].end = 16;
+    bp_two[4].start = 16; bp_two[4].end = 20;
+    bp_two[5].start = 20; bp_two[5].end = 24;
+
+    bps_two.points = bp_two;
+    bps_two.length = 6;
+
+    return bps_two;
+}
+
+struct BridgePoints createPhaseThreeBridgePoints(struct Data d) {
+    struct BridgePoints bps_three;
+    struct BridgePoint *bp_three;
+
+    bp_three = malloc(sizeof(struct BridgePoint)*7);
+    bp_three[0].start = 0; bp_three[0].end = 3;
+    bp_three[1].start = 3; bp_three[1].end = 7;
+    bp_three[2].start = 7; bp_three[2].end = 11;
+    bp_three[3].start = 11; bp_three[3].end = 15;
+    bp_three[4].start = 15; bp_three[4].end = 19;
+    bp_three[5].start = 19; bp_three[5].end = 22;
+    bp_three[6].start = 22; bp_three[6].end = 24;
+
+    bps_three.points = bp_three;
+    bps_three.length = 7;
+
+    return bps_three;
+}
+
+//Old phase 3
+//struct BridgePoints createPhaseThreeBridgePoints(struct Data d) {
+//    struct BridgePoints bps_three;
+//    struct BridgePoint *bp_three;
+//
+//    bp_three = malloc(sizeof(struct BridgePoint)*6);
+//    bp_three[0].start = 0; bp_three[0].end = 3;
+//    bp_three[1].start = 3; bp_three[1].end = 7;
+//    bp_three[2].start = 7; bp_three[2].end = 11;
+//    bp_three[3].start = 11; bp_three[3].end = 14;
+//    bp_three[4].start = 14; bp_three[4].end = 19;
+//    bp_three[5].start = 19; bp_three[5].end = 24;
+//
+//    bps_three.points = bp_three;
+//    bps_three.length = 6;
+//
+//    return bps_three;
+//}
+
+//struct BridgePoints createPhaseTwoBridgePoints(struct Data d) {
+//    struct BridgePoints bps_two;
+//    struct BridgePoint *bp_two;
+//
+//    bp_two = malloc(sizeof(struct BridgePoint)*4);
+//    bp_two[0].start = 0; bp_two[0].end = 6;
+//    bp_two[1].start = 6; bp_two[1].end = 12;
+//    bp_two[2].start = 12; bp_two[2].end = 18;
+//    bp_two[3].start = 18; bp_two[3].end = 24;
+//
+//    bps_two.points = bp_two;
+//    bps_two.length = 4;
+//
+//    return bps_two;
+//}
+
+//struct BridgePoints createPhaseThreeBridgePoints(struct Data d) {
+//    struct BridgePoints bps_three;
+//    struct BridgePoint *bp_three;
+//
+//    bp_three = malloc(sizeof(struct BridgePoint)*5);
+//    bp_three[0].start = 0; bp_three[0].end = 4;
+//    bp_three[1].start = 4; bp_three[1].end = 9;
+//    bp_three[2].start = 9; bp_three[2].end = 13;
+//    bp_three[3].start = 13; bp_three[3].end = 19;
+//    bp_three[4].start = 19; bp_three[4].end = 24;
+//
+//    bps_three.points = bp_three;
+//    bps_three.length = 5;
+//
+//    return bps_three;
+//}
+
 struct BridgePoints createBridgePoints(struct Data d, const int len) {
 
 	struct BridgePoints bps;
