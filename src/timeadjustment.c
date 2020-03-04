@@ -333,7 +333,7 @@ void assignGlobalIndices(short **global_idx, short *n_global, short step,
 		*n_global = nb;
 	} else {
 		for (int i = 0; i < nb; i++) {
-			matching_node = findMatchingNode(trees[step - 1], trees[step].times[i]);
+			matching_node = findMatchingNode (trees[step - 1], trees[step].times[i]);
 			if (matching_node < 0) {
 				global_idx[step][i] = *n_global;
 				n_global[0]++;

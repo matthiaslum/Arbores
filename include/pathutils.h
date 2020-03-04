@@ -48,6 +48,8 @@ long *segmentEndIndices(struct Smc path, struct Conditioning cond);
 short checkGlobalOrderConsistency(struct Smc path1, struct Smc path2);
 short countRecombinations(struct Smc path);
 short *createNoop();
+struct Smc_array_version convertPathToArray(struct Smc path, struct Smc_array_version * array_version);
+struct Smc convertPathArrayToSmc (struct Smc_array_version array_version, struct Data data);
 struct MRCA timesToMRCA(struct Smc path);
 struct SimplePath createNewPath(struct Smc path);
 struct Smc createPathCopy(const struct Smc path);

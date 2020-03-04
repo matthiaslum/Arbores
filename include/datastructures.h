@@ -72,13 +72,19 @@ struct Tree {
 	short n_nodes;
 };
 
+struct Tree_array_version{
+    short C[15];
+    double times[15];
+    short n_nodes;
+};
+
 struct Smc {
 	struct Tree *tree_path;
-	short **opers;
-	int *sites;
-	double *rec_times;
-	short path_len;
-	short *tree_selector;	 // this is a full sequence length array of short
+	short **opers; //recombination prune n regraft nodes, equal to number of recombinations
+	int *sites; //recombination sites
+	double *rec_times; //recombintion times of the Opers
+	short path_len; //total number of trees
+	short *tree_selector;	 // this is a full sequence length array of short    //can be obtained from the function
 												 // integers taking values in {0,...,path_len-1}
 												 // so that the tree at i'th site of the full sequence
 												 // is tree_path[tree_selector[i]];
@@ -89,6 +95,17 @@ struct Smc {
 	short *is_free; 			 // array of length equal length as the path. 1 indicates
 												 // a free time 0 fixed.
 };
+
+struct Smc_array_version{
+    struct Tree_array_version tree_path[8];
+    short opers[7][2];
+    int sites[8];
+    double rec_times[7];
+    short path_len;
+    short is_free[8];
+};
+
+
 
 struct SimplePath {
 	struct Tree *trees;
@@ -156,6 +173,17 @@ struct Conditioning {
 	int length;
 	short backward;
 	short twosided;
+};
+
+struct Conditioning_array_version{
+    struct Tree_array_version tl;
+    struct Tree_array_version tr;
+    short M[40];
+    int sites[10];
+    short n_seq;
+    int length;
+    short backward;
+    short twosided;
 };
 
 struct IntVector {
@@ -360,27 +388,28 @@ struct AcceptanceSynchro {
 
 struct MCMCDiagnostics {
 
-	double proposed_log_likelihood;
-	double current_log_likelihood;
-	double proposed_log_prior;
-	double current_log_prior;
-	double proposed_free_time_density;
-	double current_free_time_density;
-	double proposed_recombination_density;
-	double current_recombination_density;
-	short proposed_number_of_free_times;
-	short current_number_of_free_times;
-	short proposed_number_of_recombinations;
-	short current_number_of_recombinations;
-	double alpha;
-	short accept_indicator;
-	short jitter_step;
-	double log_posterior;
-	double log_prior;
-	double log_likelihood;
-	double cardinality_ratio;
-	short irreducibility;
-	double u;
+    double proposed_log_likelihood;
+    double current_log_likelihood;
+    double proposed_log_prior;
+    double current_log_prior;
+    double proposed_free_time_density;
+    double current_free_time_density;
+    double proposed_recombination_density;
+    double current_recombination_density;
+    short proposed_number_of_free_times;
+    short current_number_of_free_times;
+    short proposed_number_of_recombinations;
+    short current_number_of_recombinations;
+    double alpha;
+    short accept_indicator;
+    short jitter_step;
+    double log_posterior;
+    double log_prior;
+    double log_likelihood;
+    double cardinality_ratio;
+    short irreducibility;
+    double u;
+    char indicators[7];
 };
 
 struct NonIdentityOps {
@@ -393,6 +422,16 @@ struct MCMCSummary {
 	struct Smc path;
 	struct MCMCDiagnostics data;
 	short full_scan;
+};
+
+struct segment_output{
+    struct Smc new_segment;
+    short accept_indicator;
+};
+
+struct arraySegmentOutput{
+    struct Smc_array_version new_segment;
+    short accept_indicator;
 };
 
 enum Boundary {

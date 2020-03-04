@@ -71,18 +71,27 @@ struct LinkedSetArray exhaustivePathFinder(struct Conditioning cond, short *forc
 		struct Data d);
 struct LinkedSet *linkSets(struct AdjacencySets A);
 struct LongVector getSites(struct Conditioning cond);
+double calculateAlphaModified(struct Smc segment_p, struct Smc segment_c, struct Smc segment_c_with_times, struct Data data, struct Parameters parm,
+                              struct Conditioning condition, double extra);
 struct MCMCDiagnostics calculateAlpha(struct Smc segment_p, struct Smc path_p, struct Smc segment_c,
 		struct Smc path_c, struct Data data, struct Parameters parm,
 		struct Conditioning condition, double extra);
 struct MCMCSummary segmentSampler(struct Smc path_c, int seg, struct BridgePoints bps,
 		struct Data data, struct Parameters parm);
+struct segment_output truncatedSegmentSampler(struct Smc path_c, int seg, struct BridgePoints bps,
+                                              struct Data data, struct Parameters parm);
 struct SamplingSetData generateSamplingSet(struct Smc segment_c, struct Conditioning cond,
 		struct Data d);
 struct ShortVector createTreeSelector(struct Smc path, struct Data d);
 struct Smc createCompleteProposal(struct Smc segment, struct Smc path,
 		struct Parameters parm, struct Conditioning condition, struct Data data);
+struct Conditioning_array_version copyConditioningToArray(struct Conditioning condition);
+struct Conditioning copyConditioning(struct Conditioning_array_version condition);
+struct arraySegmentOutput convertSegmentOutputToArray (struct segment_output output,  struct arraySegmentOutput * array_version);
+struct Smc combineSegments( struct arraySegmentOutput *temp_summary, int len, struct Data data);
 struct Smc extendToFullSequence(struct Smc segment, struct Smc path,
 		struct Conditioning cond, struct Data data);
+struct Smc extractSegment(struct Smc path, struct Conditioning cond);
 struct Smc extractAndReverseSegment(struct Smc path, struct Conditioning cond);
 struct Tree *noopTreeExtension(struct Tree t);
 struct LongVector equivalence(struct ShortRowSortedMtx cmtx, short *entry, long start_row);
@@ -94,6 +103,9 @@ struct SegmentSamplerSynchro synchroniseSegmentSampler();
 struct ShortRowSortedMtx sortedCanonMtxOfTerminalTrees(struct AdjSetUnion u);
 struct ShortRowSortedMtx sortCanonicalMtx(struct CanonicalMatrix canon_mtx);
 struct AdjacencySets createEmptyAdjacencySets(long domain_size);
+struct BridgePoints createPhaseOneBridgePoints(struct Data d);
+struct BridgePoints createPhaseTwoBridgePoints(struct Data d);
+struct BridgePoints createPhaseThreeBridgePoints(struct Data d);
 struct BridgePoints createBridgePoints(struct Data d, const int len);
 struct Smc reversePathSegment(struct Smc path);
 struct UniqueRowsWithCounts uniqueRowsWithCounts(struct ShortRowSortedMtx canon);
