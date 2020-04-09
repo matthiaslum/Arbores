@@ -409,7 +409,7 @@ struct MCMCDiagnostics {
     double cardinality_ratio;
     short irreducibility;
     double u;
-    char indicators[7];
+    char indicators[8];
 };
 
 struct NonIdentityOps {

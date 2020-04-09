@@ -37,6 +37,7 @@
  */
 
 #include <math.h>
+#include <mpi.h>
 #include "backtracking.h"
 #include "commandlineoutput.h"
 #include "constants.h"
@@ -65,122 +66,122 @@ static short verbose = 0;
 //short choose_count = 0;
 //short a_choose_count = 0;
 
-struct MCMCSummary segmentSampler(struct Smc path_c, int seg, struct BridgePoints bps,
-		struct Data data, struct Parameters parm) {
-
-	struct MCMCSummary out;
-	struct MCMCDiagnostics dgn;
-	struct Conditioning condition;
-	struct SamplingSet set;
-	struct SamplingSetData sampling_set_data;
-	struct Smc path_p, sgmnt_p, sgmnt_c, sampled_path;
-	struct ShortVector selector;
-	struct LikelihoodData like;
-	struct SmcPriorData prior;
-	long pick;
-	double card_ratio;
-	short irreducibility = 0;
-
-	verbose = parm.verb;
-
-	assert(checkOperations(path_c) == 1);
-
-	condition = prepareConditioning(seg, bps, data, path_c);
-
-	if (verbose == 1)
-		printSegmentPreamble(condition, data);
-
-	/* We extract a path segment from the current full path and reverse it if we are
-	 * in the first segment. This makes the segment comparable with the proposed
-	 * segment, which we generate in the reversed direction. */
-	sgmnt_c = extractAndReverseSegment(path_c, condition);
-	assert(checkOperations(sgmnt_c) == 1);
-
-	sampling_set_data = generateSamplingSet(sgmnt_c, condition, data);
-	set = sampling_set_data.set;
-
-	if (verbose == 1)
-		printf("Sampling set cardinalities: %ld %ld\n", set.set_cardinalities[0],
-				set.set_cardinalities[1]);
-
-	/* in standard setting the sampling set is not empty */
-	if (*set.n_paths > 0) {
-
-		pick = drawPathIndex(set);
-		card_ratio = calculateCardinalityRatio(sampling_set_data, pick);
-		sampled_path = set.paths[pick];
-
-	} else {
-		// empty sampling set, the segment is that of the input
-//		printf("Empty sampling set\n");
-		sampled_path = sgmnt_c;
-		card_ratio = (double) 1;
-		irreducibility = 1;
-	}
-	assert(checkTreePathCompletely(sampled_path) == 1);
-
-	if (condition.backward == 1) {
-		// turn the right way
-		sgmnt_p = reversePathSegment(createPathCopy(sampled_path));
-		assert(checkOperations(sgmnt_p) == 1);
-	} else {
-		sgmnt_p = createPathCopy(sampled_path);
-	}
-	assert(checkTreePathCompletely(sgmnt_p) == 1);
-	path_p = createCompleteProposal(sgmnt_p, path_c, parm, condition, data);
-	assert(checkCompatibility(path_p, data) == 1);
-
-	dgn = calculateAlpha(sgmnt_p, path_p, sgmnt_c, path_c, data, parm, condition,
-			card_ratio);
-
-	dgn.u = genrand_real3();
-	dgn.accept_indicator = dgn.u < dgn.alpha ? 1 : 0;
-
-	if (dgn.accept_indicator == 1) // accept
-		out.path = createPathCopy2(path_p);
-	else
-		out.path = createPathCopy2(path_c);
-
-	assert(checkTreePathCompletely(out.path) == 1);
-	assert(checkOperations(out.path) == 1);
-	out.path = removeNoOps(out.path);
-	assert(checkOperations(out.path) == 1);
-
-	if (out.path.tree_selector != NULL)
-		free(out.path.tree_selector);
-	selector = createTreeSelector(out.path, data);
-	out.path.selector_length = (int) selector.length;
-	out.path.tree_selector = selector.v;
-
-	dgn.proposed_number_of_recombinations = countRecombinations(path_p);
-	dgn.current_number_of_recombinations = countRecombinations(path_c);
-	dgn.jitter_step = 0;
-
-	like = likelihood(out.path, data, parm);
-	dgn.log_likelihood = like.log_likelihood;
-	prior = smcprior(out.path, parm, data);
-	dgn.log_prior = prior.density;
-	deallocatePriorData(prior);
-	dgn.log_posterior = dgn.log_likelihood + dgn.log_prior;
-	deallocateLikelihood(like);
-	dgn.irreducibility = irreducibility;
-
-    writeDiagnosticsFile(dgn);
-
-	out.data = dgn;
-
-	free(condition.M);
-	free(condition.sites);
-	deallocateSamplingSet(set);
-	deallocatePath(sgmnt_c);
-	deallocatePath(sgmnt_p);
-	deallocatePath(path_p);
-
-	return out;
-}
+//struct MCMCSummary segmentSampler(struct Smc path_c, int seg, struct BridgePoints bps,
+//		struct Data data, struct Parameters parm) {
+//
+//	struct MCMCSummary out;
+//	struct MCMCDiagnostics dgn;
+//	struct Conditioning condition;
+//	struct SamplingSet set;
+//	struct SamplingSetData sampling_set_data;
+//	struct Smc path_p, sgmnt_p, sgmnt_c, sampled_path;
+//	struct ShortVector selector;
+//	struct LikelihoodData like;
+//	struct SmcPriorData prior;
+//	long pick;
+//	double card_ratio;
+//	short irreducibility = 0;
+//
+//	verbose = parm.verb;
+//
+//	assert(checkOperations(path_c) == 1);
+//
+//	condition = prepareConditioning(seg, bps, data, path_c);
+//
+//	if (verbose == 1)
+//		printSegmentPreamble(condition, data);
+//
+//	/* We extract a path segment from the current full path and reverse it if we are
+//	 * in the first segment. This makes the segment comparable with the proposed
+//	 * segment, which we generate in the reversed direction. */
+//	sgmnt_c = extractAndReverseSegment(path_c, condition);
+//	assert(checkOperations(sgmnt_c) == 1);
+//
+//	sampling_set_data = generateSamplingSet(sgmnt_c, condition, data);
+//	set = sampling_set_data.set;
+//
+//	if (verbose == 1)
+//		printf("Sampling set cardinalities: %ld %ld\n", set.set_cardinalities[0],
+//				set.set_cardinalities[1]);
+//
+//	/* in standard setting the sampling set is not empty */
+//	if (*set.n_paths > 0) {
+//
+//		pick = drawPathIndex(set);
+//		card_ratio = calculateCardinalityRatio(sampling_set_data, pick);
+//		sampled_path = set.paths[pick];
+//
+//	} else {
+//		// empty sampling set, the segment is that of the input
+////		printf("Empty sampling set\n");
+//		sampled_path = sgmnt_c;
+//		card_ratio = (double) 1;
+//		irreducibility = 1;
+//	}
+//	assert(checkTreePathCompletely(sampled_path) == 1);
+//
+//	if (condition.backward == 1) {
+//		// turn the right way
+//		sgmnt_p = reversePathSegment(createPathCopy(sampled_path));
+//		assert(checkOperations(sgmnt_p) == 1);
+//	} else {
+//		sgmnt_p = createPathCopy(sampled_path);
+//	}
+//	assert(checkTreePathCompletely(sgmnt_p) == 1);
+//	path_p = createCompleteProposal(sgmnt_p, path_c, parm, condition, data);
+//	assert(checkCompatibility(path_p, data) == 1);
+//
+//	dgn = calculateAlpha(sgmnt_p, path_p, sgmnt_c, path_c, data, parm, condition,
+//			card_ratio);
+//
+//	dgn.u = genrand_real3();
+//	dgn.accept_indicator = dgn.u < dgn.alpha ? 1 : 0;
+//
+//	if (dgn.accept_indicator == 1) // accept
+//		out.path = createPathCopy2(path_p);
+//	else
+//		out.path = createPathCopy2(path_c);
+//
+//	assert(checkTreePathCompletely(out.path) == 1);
+//	assert(checkOperations(out.path) == 1);
+//	out.path = removeNoOps(out.path);
+//	assert(checkOperations(out.path) == 1);
+//
+//	if (out.path.tree_selector != NULL)
+//		free(out.path.tree_selector);
+//	selector = createTreeSelector(out.path, data);
+//	out.path.selector_length = (int) selector.length;
+//	out.path.tree_selector = selector.v;
+//
+//	dgn.proposed_number_of_recombinations = countRecombinations(path_p);
+//	dgn.current_number_of_recombinations = countRecombinations(path_c);
+//	dgn.jitter_step = 0;
+//
+//	like = likelihood(out.path, data, parm);
+//	dgn.log_likelihood = like.log_likelihood;
+//	prior = smcprior(out.path, parm, data);
+//	dgn.log_prior = prior.density;
+//	deallocatePriorData(prior);
+//	dgn.log_posterior = dgn.log_likelihood + dgn.log_prior;
+//	deallocateLikelihood(like);
+//	dgn.irreducibility = irreducibility;
+//
+//    writeDiagnosticsFile(dgn);
+//
+//	out.data = dgn;
+//
+//	free(condition.M);
+//	free(condition.sites);
+//	deallocateSamplingSet(set);
+//	deallocatePath(sgmnt_c);
+//	deallocatePath(sgmnt_p);
+//	deallocatePath(path_p);
+//
+//	return out;
+//}
 
 struct segment_output truncatedSegmentSampler(struct Smc path_c, int seg, struct BridgePoints bps,
-                                              struct Data data, struct Parameters parm) {
+                                              struct Data data, struct Parameters parm, MPI_Comm helper_comm) {
 
     struct segment_output out;
     struct Conditioning condition;
@@ -209,7 +210,7 @@ struct segment_output truncatedSegmentSampler(struct Smc path_c, int seg, struct
     sgmnt_c = extractAndReverseSegment(path_c, condition);
     assert(checkOperations(sgmnt_c) == 1);
 
-    sampling_set_data = generateSamplingSet(sgmnt_c, condition, data);
+    sampling_set_data = generateSamplingSet(sgmnt_c, condition, data, helper_comm);
     set = sampling_set_data.set;
 
     if (verbose == 1)
@@ -416,12 +417,10 @@ struct Conditioning copyConditioning(struct Conditioning_array_version condition
     return out;
 }
 
-struct arraySegmentOutput convertSegmentOutputToArray (struct segment_output output,  struct arraySegmentOutput * array_version){
-    struct arraySegmentOutput output_array;
-    output_array.new_segment = convertPathToArray(output.new_segment, &(array_version->new_segment));
-    output_array.accept_indicator = output.accept_indicator;
+void convertSegmentOutputToArray (struct segment_output output,  struct arraySegmentOutput * array_version){
+    convertPathToArray(output.new_segment, &(array_version->new_segment));
+    array_version->accept_indicator = output.accept_indicator;
 
-    return output_array;
 }
 
 struct Smc combineSegments( struct arraySegmentOutput *new_segments, int len, struct Data data){
@@ -819,7 +818,7 @@ struct MCMCDiagnostics calculateAlpha(struct Smc segment_p, struct Smc path_p,
 }
 
 struct SamplingSetData generateSamplingSet(struct Smc segment_c, struct Conditioning cond,
-		struct Data d) {
+		struct Data d, MPI_Comm helper_comm) {
 
 	struct Smc new_path;
 	struct SamplingSetData out;
@@ -849,7 +848,7 @@ struct SamplingSetData generateSamplingSet(struct Smc segment_c, struct Conditio
 				printf("-----------------------------\n");
 			}
 
-			linkedSets = exhaustivePathFinder(cond, force_config.indicators[i], d);
+			linkedSets = exhaustivePathFinder(cond, force_config.indicators[i], d, helper_comm);
 
 			if (linkedSets.completed == 1) {
 				if (cond.twosided == 1) {
@@ -1016,7 +1015,7 @@ void deallocateForcingConfiguration(struct ForcingConfig config) {
 }
 
 struct LinkedSetArray exhaustivePathFinder(struct Conditioning cond, short *force_conf,
-		struct Data d) {
+		struct Data d, MPI_Comm helper_comm) {
 
 	long domain_size, new_domain_size;
 	struct Tree *domain;
@@ -1073,7 +1072,7 @@ struct LinkedSetArray exhaustivePathFinder(struct Conditioning cond, short *forc
 					printf("\tForcing recombination --> recursive search\n\n");
 			}
 			deleteAdjacencySets(aSets);
-			aSets = createAdjacencySetsRecursively(domain, domain_size, cond, j, force_conf);
+			aSets = createAdjacencySetsRecursively(domain, domain_size, cond, j, force_conf, helper_comm);
 		} else if (verbose == 1) {
 			printf("\t%ld compatible trees with no-operation\n", aSets.n_active);
 		}
@@ -1154,6 +1153,22 @@ void deleteAdjacencySets(struct AdjacencySets a) {
 
 }
 
+void deleteAdjacencySets_version2(struct AdjacencySets a) {
+
+    for (int i = 0; i < a.n_sets; i++) {
+        if (a.set_size[i] > 0) {
+            for (int j = 0; j < a.set_size[i]; j++)
+                for (int k = 0; k < a.length; k++)
+                    deleteTree(a.tree_adj_set[i][j + k * a.set_size[i]]);
+            free(a.tree_adj_set[i]);
+            free(a.oper_adj_set[i]);
+        }
+    }
+    free(a.set_size);
+    free(a.tree_adj_set);
+    free(a.oper_adj_set);
+
+}
 struct LinkedSet *linkSets(const struct AdjacencySets A) {
 
 	struct AdjSetUnion u;
@@ -1499,7 +1514,7 @@ struct LongVector equivalence(struct ShortRowSortedMtx cmtx, short *entry, long 
 }
 
 struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long domain_size,
-		struct Conditioning cond, int j, short *forced) {
+		struct Conditioning cond, int j, short *forced, MPI_Comm helper_comm) {
 
 //	struct Tree visu[2];
 //	short **visuop;
@@ -1531,17 +1546,17 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
             for (long i = 0; i < start_index; i++){
                 domain_to_send[i] = copyTreeToTreeArray_v2(domain[i]);
             }
-            MPI_Send(&domain_to_send, (sizeof(struct Tree_array_version) *start_index), MPI_BYTE, 1, (-1), helper_comm);
+            MPI_Send(&domain_to_send, (sizeof(struct Tree_array_version) *start_index), MPI_BYTE, 1, (1), helper_comm);
 
             struct Conditioning_array_version condition_to_send = copyConditioningToArray(cond);
 
             short col = (j+1);
             short force_to_send = forced[j];
             short length_to_send = length;
-            MPI_Send(&condition_to_send, sizeof(struct Conditioning_array_version), MPI_BYTE, 1, (-2), helper_comm);
-            MPI_Send(&col, 1, MPI_SHORT, 1, (-3), helper_comm);
-            MPI_Send(&force_to_send, 1, MPI_SHORT, 1, (-4), helper_comm);
-            MPI_Send(&length_to_send, 1, MPI_SHORT, 1, (-5), helper_comm);
+            MPI_Send(&condition_to_send, sizeof(struct Conditioning_array_version), MPI_BYTE, 1, (2), helper_comm);
+            MPI_Send(&col, 1, MPI_SHORT, 1, (3), helper_comm);
+            MPI_Send(&force_to_send, 1, MPI_SHORT, 1, (4), helper_comm);
+            MPI_Send(&length_to_send, 1, MPI_SHORT, 1, (5), helper_comm);
         }
 
 		for (long i = start_index; i < domain_size; i++) {
@@ -1597,11 +1612,11 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
             short * opersToRec[domain_quota];
 
             //Receive the counts of things to receive
-            MPI_Recv(&number_of_trees, domain_quota, MPI_LONG, 1, (-6), helper_comm, MPI_STATUS_IGNORE);
-            MPI_Recv(&number_of_opers, domain_quota, MPI_LONG, 1, (-7), helper_comm, MPI_STATUS_IGNORE);
+            MPI_Recv(&number_of_trees, domain_quota, MPI_LONG, 1, (6), helper_comm, MPI_STATUS_IGNORE);
+            MPI_Recv(&number_of_opers, domain_quota, MPI_LONG, 1, (7), helper_comm, MPI_STATUS_IGNORE);
 
-            MPI_Recv(&set_size, domain_quota, MPI_LONG, 1, (-8), helper_comm, MPI_STATUS_IGNORE);
-            MPI_Recv(&n_active_rec, 1, MPI_LONG, 1, (-9), helper_comm, MPI_STATUS_IGNORE);
+            MPI_Recv(&set_size, domain_quota, MPI_LONG, 1, (8), helper_comm, MPI_STATUS_IGNORE);
+            MPI_Recv(&n_active_rec, 1, MPI_LONG, 1, (9), helper_comm, MPI_STATUS_IGNORE);
             aSets.n_active += n_active_rec;
             for (long g = 0; g < domain_quota; g++){
                 aSets.set_size[g] = set_size[g];
@@ -1620,15 +1635,30 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
             }
 
             //Receive the trees and opers
-            int tag = 0;
-            for (long domain_index =0; domain_index < domain_quota; domain_index++){
-                if (number_of_trees[domain_index] > 0)
-                    MPI_Recv(array_of_pointers_to_tree_arrays[domain_index], (sizeof(struct Tree_array_version) * number_of_trees[domain_index]), MPI_BYTE, 1, tag, helper_comm, MPI_STATUS_IGNORE);
+//            MPI_Status opers_status[domain_quota];
+//            MPI_Status trees_status[domain_quota];
+//
+//            MPI_Request trees_request[domain_quota];
+//            MPI_Request opers_request[domain_quota];
+//            long tree_counter = 0;
+//            long oper_counter =0;
 
-                if (number_of_opers[domain_index] > 0)
-                    MPI_Recv(opersToRec[domain_index], (sizeof(short) * number_of_opers[domain_index]), MPI_BYTE, 1, (tag+domain_quota), helper_comm, MPI_STATUS_IGNORE);
+            long tag = 0;
+            for (long domain_index =0; domain_index < domain_quota; domain_index++){
+                if (number_of_trees[domain_index] > 0) {
+//                    MPI_Irecv(array_of_pointers_to_tree_arrays[domain_index], (sizeof(struct Tree_array_version) * number_of_trees[domain_index]), MPI_BYTE, 1, tag, helper_comm, &(trees_request[tree_counter]));
+                    MPI_Recv(array_of_pointers_to_tree_arrays[domain_index], (sizeof(struct Tree_array_version) * number_of_trees[domain_index]), MPI_BYTE, 1, (int) tag, helper_comm, MPI_STATUS_IGNORE);
+//                    tree_counter += 1;
+                }
+                if (number_of_opers[domain_index] > 0) {
+//                    MPI_Irecv(opersToRec[domain_index], (sizeof(short) * number_of_opers[domain_index]), MPI_BYTE, 1, (tag + domain_quota), helper_comm, &(opers_request[oper_counter]));
+                    MPI_Recv(opersToRec[domain_index], (sizeof(short) * number_of_opers[domain_index]), MPI_BYTE, 1, (int) (tag + domain_quota), helper_comm, MPI_STATUS_IGNORE);
+//                    oper_counter += 1;
+                }
                 tag += 1;
             }
+//            MPI_Waitall(tree_counter, trees_request, trees_status);
+//            MPI_Waitall(oper_counter, opers_request, opers_status);
 
             //Synchronize the data with aSets
             for (long i = 0; i < domain_quota; i++){
@@ -1650,6 +1680,27 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
                     free(opersToRec[i]);
                 }
             }
+//            int world_rank;
+//            MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+//            if (world_rank ==2 && domain_quota == 50){
+//                for (long i =0 ; i < domain_quota; i+=49){
+//                    printf("\n\n Domain index %ld\n\n", i);
+//                    long ntrees = number_of_trees[i];
+//                    long nopers = number_of_opers[i];
+//                    if (ntrees >0) {
+//                        for (long j = 0; j < ntrees; j++) {
+//                            printf("Tree %ld of domain index %ld\n", j, i);
+//                            printTree(aSets.tree_adj_set[i][j]);
+//                        }
+//                    }
+//                    if (nopers>0){
+//                        for (long j = 0; j < nopers; j++){
+//                            printf("Operations for domain index %d \n", i);
+//                            printf("%d\n", aSets.oper_adj_set[i][j]);
+//                        }
+//                    }
+//                }
+//            }
         }
 
 		new_site = length == 3 ? (cond.sites[j] + cond.sites[j + 1]) / 2 : -1;
@@ -1676,19 +1727,25 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
 	return aSets;
 }
 
-void shareWorkloadAdjacencySets(long domain_size){
+void shareWorkloadAdjacencySets(long domain_size, MPI_Comm helper_comm){
     // allocate domain memory for number of trees equal to domain_size
+    int world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     struct Tree_array_version domain[domain_size];
-    MPI_Recv(&domain, (sizeof(Tree_array_version)* domain_size), MPI_BYTE, 0, (-1), helper_comm, MPI_STATUS_IGNORE);
-
+    MPI_Recv(&domain, (sizeof(struct Tree_array_version)* domain_size), MPI_BYTE, 0, (1), helper_comm, MPI_STATUS_IGNORE);
+//    printf("Rank %d 's domain size received is %ld\n", world_rank, domain_size);
     struct Conditioning_array_version condition_to_rec;
-    MPI_Recv(&condition_to_rec, sizeof(Conditioning_array_version), MPI_BYTE, 0, (-2), helper_comm, MPI_STATUS_IGNORE);
+    MPI_Recv(&condition_to_rec, sizeof(struct Conditioning_array_version), MPI_BYTE, 0, (2), helper_comm, MPI_STATUS_IGNORE);
+//    printf("Rank %d received condition \n", world_rank);
     struct Conditioning cond = copyConditioning(condition_to_rec);
 
+
     short col; short force_to_rec; short length_to_rec;
-    MPI_Recv(&col, 1, MPI_SHORT, 0, (-3), helper_comm, MPI_STATUS_IGNORE);
-    MPI_Recv(&force_to_rec, 1, MPI_SHORT, 0, (-4), helper_comm, MPI_STATUS_IGNORE);
-    MPI_Recv(&length_to_rec, 1, MPI_SHORT, 0, (-5), helper_comm, MPI_STATUS_IGNORE);
+    MPI_Recv(&col, 1, MPI_SHORT, 0, (3), helper_comm, MPI_STATUS_IGNORE);
+    MPI_Recv(&force_to_rec, 1, MPI_SHORT, 0, (4), helper_comm, MPI_STATUS_IGNORE);
+    MPI_Recv(&length_to_rec, 1, MPI_SHORT, 0, (5), helper_comm, MPI_STATUS_IGNORE);
+//    printf("Rank %d received Col, force and length %d, %d %d \n", world_rank, col, force_to_rec, length_to_rec);
+
 
     // do the computations
 
@@ -1708,6 +1765,7 @@ void shareWorkloadAdjacencySets(long domain_size){
     aSets.tree_adj_set = malloc(sizeof(struct Tree *) * domain_size);
     aSets.oper_adj_set = malloc(sizeof(short *) * domain_size);
     aSets.set_size = malloc(sizeof(long) * domain_size);
+    aSets.n_sets = domain_size;
 
     for (long i = 0; i < domain_size; i++) {
 
@@ -1735,10 +1793,10 @@ void shareWorkloadAdjacencySets(long domain_size){
             free(new_aSet.opers);
             trees_to_send[i] = malloc(sizeof(struct Tree_array_version) * number_of_trees[i]);
             opersToSend[i] = malloc(sizeof(short) * number_of_opers[i]);
-            for (int j =0; j <number_of_trees[i]; j++){
+            for (long j =0; j <number_of_trees[i]; j++){
                 trees_to_send[i][j] = copyTreeToTreeArray_v2(aSets.tree_adj_set[i][j]);
             }
-            for (int j = 0; j < number_of_opers[i]; j++){
+            for (long j = 0; j < number_of_opers[i]; j++){
                 opersToSend[i][j] = aSets.oper_adj_set[i][j];
             }
         }
@@ -1758,23 +1816,41 @@ void shareWorkloadAdjacencySets(long domain_size){
         free(new_aSet.n_entries);
     }
     //SEND BACK THE NUMBER OF TREES AND OPERATIONS
-    MPI_Send(&number_of_trees, domain_size, MPI_LONG, 0, (-6), helper_comm);
-    MPI_Send(&number_of_opers, domain_size, MPI_LONG, 0, (-7), helper_comm);
+    MPI_Send(&number_of_trees, domain_size, MPI_LONG, 0, (6), helper_comm);
+//    printf("Rank %d 's sent number of trees to be sent back\n", world_rank);
+    MPI_Send(&number_of_opers, domain_size, MPI_LONG, 0, (7), helper_comm);
+//    printf("Rank %d 's sent number of opers to be sent back\n", world_rank);
 
     //SEND BACK SET SIZE
-    MPI_Send(&set_size, domain_size, MPI_LONG, 0, (-8), helper_comm);
-    MPI_Send(&n_active, 1, MPI_LONG, 0, (-9), helper_comm);
+    MPI_Send(&set_size, domain_size, MPI_LONG, 0, (8), helper_comm);
+    MPI_Send(&n_active, 1, MPI_LONG, 0, (9), helper_comm);
 
     //SEND THE ACTUAL TREES AND OPERATIONS ITSELF
-    int tag = 0;
-    for (long domain_index =0; domain_index < domain_size; domain_index++){
-        if (number_of_trees[domain_index] > 0)
-            MPI_Send(trees_to_send[domain_index], (sizeof(struct Tree_array_version) * number_of_trees[domain_index]), MPI_BYTE, 0, tag, helper_comm);
+//    MPI_Status opers_status[domain_size];
+//    MPI_Status trees_status[domain_size];
+//
+//    MPI_Request trees_request[domain_size];
+//    MPI_Request opers_request[domain_size];
+//    long tree_counter = 0;
+//    long oper_counter =0;
 
-        if (number_of_opers[domain_index] > 0)
-            MPI_Recv(opersToSend[domain_index], (sizeof(short) * number_of_opers[domain_index]), MPI_BYTE, 0, (tag+domain_size), helper_comm);
+    long tag = 0;
+    for (long domain_index =0; domain_index < domain_size; domain_index++){
+        if (number_of_trees[domain_index] > 0) {
+//            MPI_Isend(trees_to_send[domain_index], (sizeof(struct Tree_array_version) * number_of_trees[domain_index]), MPI_BYTE, 0, tag, helper_comm, &(trees_request[tree_counter]));
+//            tree_counter += 1;
+            MPI_Send(trees_to_send[domain_index], (sizeof(struct Tree_array_version) * number_of_trees[domain_index]), MPI_BYTE, 0, (int) tag, helper_comm);
+//            printf("Rank %d 's successfully sent trees for domain index %ld \n", world_rank, domain_index);
+        }
+        if (number_of_opers[domain_index] > 0) {
+            MPI_Send(opersToSend[domain_index], (sizeof(short) * number_of_opers[domain_index]), MPI_BYTE, 0, (int) (tag+domain_size), helper_comm);
+//            MPI_Isend(opersToSend[domain_index], (sizeof(short) * number_of_opers[domain_index]), MPI_BYTE, 0, (tag + domain_size), helper_comm, &(opers_request[oper_counter]));
+//            oper_counter += 1;
+        }
         tag += 1;
     }
+//    MPI_Waitall(tree_counter, trees_request, trees_status);
+//    MPI_Waitall(oper_counter, opers_request, opers_status);
 
     //free the sending arrays
     for (long i =0; i < domain_size; i++){
@@ -1786,7 +1862,29 @@ void shareWorkloadAdjacencySets(long domain_size){
             free(opersToSend[i]);
     }
     free(cond.M); free(cond.sites); deleteTree(cond.tl); deleteTree(cond.tr);
-    deleteAdjacencySets(aSets);
+//    printf("Rank %d Successfully  freed the trees that were sent \n", world_rank);
+//    if (world_rank ==9 && domain_size == 50){
+//        for (long i =0 ; i < domain_size; i+=49){
+//            printf("\n\n Domain index %ld\n\n", i);
+//            long ntrees = number_of_trees[i];
+//            long nopers = number_of_opers[i];
+//            if (ntrees >0) {
+//                for (long j = 0; j < ntrees; j++) {
+//                    printf("Tree %ld of domain index %ld\n", j, i);
+//                    printTree(aSets.tree_adj_set[i][j]);
+//                }
+//            }
+//            if (nopers>0){
+//                for (long j = 0; j < nopers; j++){
+//                    printf("Operations for domain index %d \n", i);
+//                    printf("%d\n", aSets.oper_adj_set[i][j]);
+//                }
+//            }
+//        }
+//    }
+    aSets.length = length_to_rec++;
+    deleteAdjacencySets_version2(aSets);
+//    printf("Rank %d Successfully deallocated the aSets \n", world_rank);
 }
 
 short *extract2DOperations(short *op3D, long m, short length) {

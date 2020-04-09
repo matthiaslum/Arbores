@@ -258,8 +258,9 @@ short *createNoop() {
 }
 
 
-struct Smc_array_version convertPathToArray(struct Smc path, struct Smc_array_version * array_version){
+void convertPathToArray(struct Smc path, struct Smc_array_version * array_version){
 //    struct Smc_array_version array_version;
+
     array_version->path_len = path.path_len;
     int path_length = path.path_len;
     for (int i = 0; i < path_length; i++){

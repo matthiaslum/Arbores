@@ -285,8 +285,9 @@ struct MCMCDiagnostics calculateJitterAlpha(struct Smc path_p, struct Smc path_c
 	dgn.alpha = dgn.alpha > 1 ? 1 : dgn.alpha;
     dgn.indicators[0] = 'N';
     dgn.indicators[1] = 'A';
+    dgn.indicators[2] = '\0';
 
-	return dgn;
+    return dgn;
 }
 
 struct JitterSychro synchroniseJitter() {

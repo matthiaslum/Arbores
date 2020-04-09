@@ -40,6 +40,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <time.h>
 #include <mpi.h>
 #include <unistd.h>
 #include <stdbool.h>
@@ -107,7 +108,7 @@ int main(int argc, const char * argv[]) {
 
     int core_rank = -1, core_size = -1;
 
-    if (MPI_COMM_NULL != prime_comm) {
+    if (MPI_COMM_NULL != core_comm) {
         MPI_Comm_rank(core_comm, &core_rank);
         MPI_Comm_size(core_comm, &core_size);
     }
@@ -116,7 +117,7 @@ int main(int argc, const char * argv[]) {
     MPI_Comm helper_comm;
     MPI_Comm_split(MPI_COMM_WORLD, color, world_rank, &helper_comm);
 
-    int helper_rank, helper_size
+    int helper_rank, helper_size;
     MPI_Comm_rank(helper_comm, &helper_rank);
     MPI_Comm_size(helper_comm, &helper_size);
 
@@ -142,7 +143,12 @@ int main(int argc, const char * argv[]) {
     long N, iter = 0, full_scan_count = 0;
     short segment_sampler_on = 1;
 
+    clock_t total_program_begin;
+    clock_t parallel_begin;
+    clock_t parallel_end;
+    double total_parallel_time;
     if (world_rank == 0){
+        total_program_begin = clock();
         printf("Arbores algorithm for simulating ancestral recombination graphs ");
         printf("conditional of observed DNA polymorphism data.\n");
         printf("Copyright (c) 2016, Kari Heine, Maria De Iorio, Alex Beskos, Ajay Jasra, David Balding\n\n");
@@ -196,7 +202,7 @@ int main(int argc, const char * argv[]) {
     struct BridgePoints all_bp[3] = {bp_one, bp_two, bp_three};
 
     if (world_rank ==0){
-        printf("%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
+        printf("\n%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
     }
 //	printf("Segregating sites\n");
 //	printIntArray(data.segregating_sites, 1, data.n_sites,bp_one 1);
@@ -272,13 +278,13 @@ int main(int argc, const char * argv[]) {
         while(true) {
 
             MPI_Recv(&status, 1, MPI_LONG, 0, 0, helper_comm, MPI_STATUS_IGNORE);
-            printf("Status: %d\n", status);
+//            printf("Status: %d\n", status);
 
             if (status == -1)
                 break;
 
             else if (status > 0)
-                shareWorkloadAdjacencySets(status);
+                shareWorkloadAdjacencySets(status, helper_comm);
         }
     }
 
@@ -300,7 +306,7 @@ int main(int argc, const char * argv[]) {
 
         }
         MPI_Bcast(&iter, 1, MPI_INT, 0, core_comm);
-        printf("Broadcasted Iter, iter = %d\n", iter);
+//        printf("Broadcasted Iter, iter = %d\n", iter);
 
         if (iter >= N){
             if (world_rank < 7) {
@@ -316,15 +322,17 @@ int main(int argc, const char * argv[]) {
             for (int j = 0; j < 3; j++) {
                 bp = all_bp[j];
 
-                if (world_rank == 0)
+                if (world_rank == 0){
                     convertPathToArray(chain[chain_length-1].path, &old_path_array_form);
+                    parallel_begin = clock();
+                }
 
 
                 MPI_Bcast(&old_path_array_form, sizeof(old_path_array_form), MPI_BYTE, 0, core_comm);
                 struct Smc old_path_original = convertPathArrayToSmc(old_path_array_form, data);
 
                 if (world_rank < bp.length){
-                    struct segment_output output = truncatedSegmentSampler(old_path_original, world_rank, bp, data, parm);
+                    struct segment_output output = truncatedSegmentSampler(old_path_original, world_rank, bp, data, parm, helper_comm);
                     convertSegmentOutputToArray(output, &to_send);
                     deallocatePath(output.new_segment);
                 }
@@ -346,7 +354,9 @@ int main(int argc, const char * argv[]) {
                         else if (temp_summary[i].accept_indicator == 0)
                             dgn.indicators[i] ='0';
                     }
-
+                    dgn.indicators[bp.length] = '\0';
+                    parallel_end = clock();
+                    total_parallel_time += ((double)(parallel_end - parallel_begin) / CLOCKS_PER_SEC);
                     assert(checkCompatibility(new_path, data) == 1);
                     assert(checkTreePathCompletely(new_path) == 1);
                     assert(checkOperations(new_path) == 1);
@@ -389,7 +399,7 @@ int main(int argc, const char * argv[]) {
                     out.path = createPathCopy(new_path);
 
                     //write diagnostics
-
+                    writeDiagnosticsFile(dgn);
                     chain[chain_length] = out;
 
                     chain_length++;
@@ -423,11 +433,17 @@ int main(int argc, const char * argv[]) {
 
     if (world_rank ==0){
         deallocateChain(chain, chain_length);
+        clock_t total_program_end = clock();
+        double total_program_time = (double)(total_program_end - total_program_begin) / CLOCKS_PER_SEC;
+        printf("\n Total time for the entire program is %f seconds\n",total_program_time);
+        printf("\n Total parallel time is %f seconds\n", total_parallel_time);
     }
 
     MPI_Group_free(&world_group);
     MPI_Group_free(&core_group);
-    MPI_Comm_free(&core_comm);
+    if (world_rank < 7){
+        MPI_Comm_free(&core_comm);
+    }
     MPI_Comm_free(&helper_comm);
     deleteData(data);
     free(bp_one.points);
