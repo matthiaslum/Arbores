@@ -56,6 +56,8 @@ double times_tmp[15];
 
 short branch_width[2*15-1];
 short selected_branch_width[2*15-1];
+//#pragma omp threadprivate(time_i_sort, time_i_sort_inv, C_tmp, times_tmp, branch_width, selected_branch_width)
+
 
 short *createOperationCopy(short *op) {
 	short *out;
@@ -407,7 +409,7 @@ struct Tree createTree(short n_leaves) {
 
 	short n_b = n_leaves - 1;
 	struct Tree t;
-	t.C = malloc(sizeof(short) * 2 * n_b);
+	t.C = malloc(sizeof(short) * 2 * n_b); //All the left leaves first, followed by the right leaves.
 	t.times = malloc(sizeof(double) * n_b);
 	t.n_nodes = 2 * n_leaves - 1;
 	return t;

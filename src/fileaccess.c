@@ -647,6 +647,7 @@ void writeDiagnosticsFile(struct MCMCDiagnostics dgn) {
 	fprintf(file, "%15.10e ", dgn.current_recombination_density); // 19
 	fprintf(file, "%15hd ", dgn.irreducibility); // 20
 	fprintf(file, "%15.10e ", dgn.u); //21
-	fprintf(file, "\n");
+    fprintf(file, "%s ", dgn.indicators); //22
+    fprintf(file, "\n");
 	fclose(file);
 }

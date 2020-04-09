@@ -381,6 +381,7 @@ struct MCMCDiagnostics {
 	double cardinality_ratio;
 	short irreducibility;
 	double u;
+	char indicators[8];
 };
 
 struct NonIdentityOps {
@@ -394,6 +395,12 @@ struct MCMCSummary {
 	struct MCMCDiagnostics data;
 	short full_scan;
 };
+
+struct segment_output{
+    struct Smc new_segment;
+    short accept_indicator;
+};
+
 
 enum Boundary {
 	up, down

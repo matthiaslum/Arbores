@@ -46,6 +46,7 @@ static double *doubleArray;
 static short *array;
 static long sort_n_cols;
 static long sort_n_rows;
+//#pragma omp threadprivate(intArray, shortArray, doubleArray, array, sort_n_cols, sort_n_rows)
 
 int intComparator(const void *p1, const void *p2) {
 	int a = *((int *) p1), b = *((int *) p2);

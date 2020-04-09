@@ -57,6 +57,8 @@ short *createOperationCopy(short *op);
 short *recombinationSiteIndicator(struct Smc path);
 struct BranchLength branchLengths(struct Tree t, struct Data data, long col);
 struct ShortVector findAncestors(struct Tree t, short node);
+//void copyTreeToTreeArray (struct Tree t, struct Tree_array_version * tree_array);
+//struct Tree createCopyFromTreeArray(struct Tree_array_version t);
 struct Tree createCopy(struct Tree t);
 struct Tree createTree(short n_leaves);
 struct Tree duplicateTree(struct Tree t);

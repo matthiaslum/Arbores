@@ -76,14 +76,25 @@ struct MCMCDiagnostics calculateAlpha(struct Smc segment_p, struct Smc path_p, s
 		struct Conditioning condition, double extra);
 struct MCMCSummary segmentSampler(struct Smc path_c, int seg, struct BridgePoints bps,
 		struct Data data, struct Parameters parm);
+struct segment_output truncatedSegmentSampler(struct Smc path_c, int seg, struct BridgePoints bps,
+                                                     struct Data data, struct Parameters parm);
 struct SamplingSetData generateSamplingSet(struct Smc segment_c, struct Conditioning cond,
 		struct Data d);
 struct ShortVector createTreeSelector(struct Smc path, struct Data d);
 struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, struct BridgePoints bps, struct Data data);
 struct Smc createCompleteProposal(struct Smc segment, struct Smc path,
 		struct Parameters parm, struct Conditioning condition, struct Data data);
+double calculateAlphaModified(struct Smc segment_p, struct Smc segment_c, struct Smc segment_c_with_times, struct Data data, struct Parameters parm,
+                              struct Conditioning condition, double extra);
+struct Conditioning_array_version copyConditioningToArray(struct Conditioning condition);
+struct Conditioning copyConditioning(struct Conditioning_array_version condition);
+struct MCMCSummary_modified_array convertMCMCSummaryToArray (struct MCMCSummary_modified summary);
+struct MCMCSummary_modified convertFromArrayMCMCSummary (struct MCMCSummary_modified_array summary, struct Data data);
+struct Smc combineSegments( struct segment_output *new_segments, int len, struct Data data);
 struct Smc extendToFullSequence(struct Smc segment, struct Smc path,
 		struct Conditioning cond, struct Data data);
+struct Smc extractSegment(struct Smc path, struct Conditioning cond);
+struct Smc extractSegment_free_times(struct Smc path, struct Conditioning cond);
 struct Smc extractAndReverseSegment(struct Smc path, struct Conditioning cond);
 struct Tree *noopTreeExtension(struct Tree t);
 struct LongVector equivalence(struct ShortRowSortedMtx cmtx, short *entry, long start_row);

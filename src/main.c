@@ -40,7 +40,8 @@
 
 #include <assert.h>
 #include <stdio.h>
-#include <omp.h>
+#include <time.h>
+//#include "/usr/local/include/omp.h"
 #include <unistd.h>
 #include <stdbool.h>
 #include <sys/stat.h>
@@ -66,9 +67,11 @@
 #include "timeadjustment.h"
 #include "treeutils.h"
 #include "utils.h"
+#include <time.h>
 
 int *intArray;
 char *result_folder;
+//#pragma omp threadprivate(intArray)
 
 void deallocateChain(struct MCMCSummary *chain, long iter);
 void deallocateDiagnostics(struct MCMCDiagnostics diag);
@@ -88,6 +91,12 @@ int main(int argc, const char * argv[]) {
     struct MRCA mrca;
     long N, iter = 0, full_scan_count = 0;
     short segment_sampler_on = 1;
+    clock_t total_program_begin;
+    clock_t parallel_begin;
+    clock_t parallel_end;
+    double total_parallel_time;
+
+    total_program_begin = clock();
 
     printf("Arbores algorithm for simulating ancestral recombination graphs ");
     printf("conditional of observed DNA polymorphism data.\n");
@@ -137,7 +146,7 @@ int main(int argc, const char * argv[]) {
     struct BridgePoints bp_three = createPhaseThreeBridgePoints(data);
     struct BridgePoints all_bp[3] = {bp_one, bp_two, bp_three};
 
-    printf("%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
+    printf("\n%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
 //	printf("Segregating sites\n");
 //	printIntArray(data.segregating_sites, 1, data.n_sites,bp_one 1);
 
@@ -188,143 +197,169 @@ int main(int argc, const char * argv[]) {
     writePathToChainFile(path);
 
     struct Smc old_path;
-    struct Smc path_p;
-    struct Smc combined_path;
     struct MCMCSummary out;
     struct MCMCDiagnostics dgn;
     struct ShortVector selector;
     struct LikelihoodData like;
     struct SmcPriorData prior;
+    int chain_length = iter;
+    int old_chain_length;
+    struct segment_output temp_summary[7];
 
 //	initChainTikzFile(chain[iter - 1].path, data);
     if (parm.verb == 0)
         printf("                     ");
     while (true) {
 
-        iter = jittering(chain, iter, N, parm, data);
+//        iter = jittering(chain, iter, N, parm, data);
+        old_chain_length = chain_length;
+        chain_length = jittering(chain, chain_length, N, parm, data);
+        iter += (chain_length - old_chain_length);
+
         if (parm.verb == 1)
             printf("ITERATION %ld\n", iter);
 //        path = chain[iter - 1].path;
 
         if (iter >= N)
             break;
-                //omp_set_dynamic(0); //shared(temp_summary) firstprivate(old_path, bp, data, parm)
-
-        //variables needed, old_path, combined_path, new_segment, MCMCsummary, diagnostics;
         if (segment_sampler_on == 1) {
 
             for (int j = 0; j <3; j++) {
 
                 bp = all_bp[j];
 
-//                deallocatePath(old_path);
-//                deallocatePath(combined_path);
-
-                old_path = chain[iter-1].path;
-                combined_path = createPathCopy(old_path);
-                struct MCMCSummary_modified *temp_summary  = malloc(sizeof(struct MCMCSummary_modified) * bp.length);
-                
-                omp_set_num_threads(2);
-            #pragma omp parallel for 
+//                old_path = chain[iter-1].path;
+                old_path = chain[chain_length-1].path;
+                parallel_begin = clock();
                 for (int i = 0; i < bp.length; i++) {
                     temp_summary[i] = truncatedSegmentSampler(old_path, i, bp, data, parm);
                 }
-                for (int i = 0; i < bp.length; i++) {
 
-                    //new_segment, oldsegment, conditioning
-                    //generate complete proposal
-                    //generate alpha
-                    //generate diagnostics
-                    //UPDATE PATH WITH IT
+                //Combining of segments
+                struct MCMCDiagnostics dgn;
+                struct ShortVector selector;
+                struct MCMCSummary out;
 
-                    path_p = createCompleteProposal(temp_summary[i].new_segment, combined_path, parm, temp_summary[i].condition, data);
-                    assert(checkCompatibility(path_p, data) == 1);
+                struct Smc new_path = combineSegments(temp_summary, bp.length, data);
 
-                    dgn = calculateAlpha(temp_summary[i].new_segment, path_p, temp_summary[i].old_segment, combined_path, data, parm, temp_summary[i].condition,
-                                         temp_summary[i].card_ratio);
-
-                    dgn.u = genrand_real3();
-                    dgn.accept_indicator = dgn.u < dgn.alpha ? 1 : 0;
-                    dgn.proposed_number_of_recombinations = countRecombinations(path_p);
-                    dgn.current_number_of_recombinations = countRecombinations(combined_path);
-
-                    if (dgn.accept_indicator == 1) // accept
-                        combined_path = createPathCopy2(path_p);
-                    else
-                        combined_path = createPathCopy2(combined_path);
-
-                    assert(checkTreePathCompletely(combined_path) == 1);
-                    assert(checkOperations(combined_path) == 1);
-                    combined_path = removeNoOps(combined_path);
-                    assert(checkOperations(combined_path) == 1);
-
-                    if (combined_path.tree_selector != NULL)
-                        free(combined_path.tree_selector);
-                    selector = createTreeSelector(combined_path, data);
-                    combined_path.selector_length = (int) selector.length;
-                    combined_path.tree_selector = selector.v;
-
-                    dgn.jitter_step = 0;
-
-                    like = likelihood(combined_path, data, parm);
-                    dgn.log_likelihood = like.log_likelihood;
-                    prior = smcprior(combined_path, parm, data);
-                    dgn.log_prior = prior.density;
-                    deallocatePriorData(prior);
-                    dgn.log_posterior = dgn.log_likelihood + dgn.log_prior;
-                    deallocateLikelihood(like);
-                    dgn.irreducibility = temp_summary[i].irreducibility;
-
-
-                    free(temp_summary[i].condition.M);
-                    free(temp_summary[i].condition.sites);
-                    deallocatePath(temp_summary[i].old_segment);
-                    deallocatePath(temp_summary[i].new_segment);
-                    deallocatePath(path_p);
-
-                    out.data = dgn;
-                    out.path = createPathCopy(combined_path);
-                    chain[iter] = out;
-                    iter++;
+                for (int i =0; i < bp.length; i++){
+                    if (temp_summary[i].accept_indicator == 1)
+                        dgn.indicators[i] ='1';
+                    else if (temp_summary[i].accept_indicator == 0)
+                        dgn.indicators[i] ='0';
                 }
-                    path = chain[iter - 1].path;
-                    if (parm.verb == 1)
-                        printf("ITERATION %ld\n", iter);
-                    else {
-                        printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", iter, N);
-                        fflush(stdout);
-                    }
-                    //				appendChainTikzFile(chain[iter - 1].path, data, 0);
-                    //				writeTikzTexFileForTreePath(NULL, path.tree_path, path.opers, NULL, NULL, NULL,
-                    //						path.sites, path.rec_times, path.path_len);
+                dgn.indicators[bp.length] = '\0';
+                parallel_end = clock();
+                total_parallel_time += ((double)(parallel_end - parallel_begin) / CLOCKS_PER_SEC);
 
-                    if (j==2 && i == bp.length - 1) {
-                        chain[iter - 1].full_scan = 1;
-                        mrca = timesToMRCA(path);
-                        writeMrcaToFile(mrca);
-                        deallocateMRCA(mrca);
-                        writePathToChainFile(path);
-                        full_scan_count++;
-                        map(chain, iter, full_scan_count, data);
-                    } else {
-                        chain[iter - 1].full_scan = 0;
-                    }
+                assert(checkCompatibility(new_path, data) == 1);
 
-                    if (iter >= N)
-                        break;
-                    //				getchar();
+                dgn.proposed_number_of_recombinations = countRecombinations(new_path);
+                dgn.current_number_of_recombinations = countRecombinations(old_path);
+
+                assert(checkTreePathCompletely(new_path) == 1);
+                assert(checkOperations(new_path) == 1);
+                new_path = removeNoOps(new_path);
+                assert(checkOperations(new_path) == 1);
+
+                if (new_path.tree_selector != NULL)
+                    free(new_path.tree_selector);
+                selector = createTreeSelector(new_path, data);
+                new_path.selector_length = (int) selector.length;
+                new_path.tree_selector = selector.v;
+
+                dgn.jitter_step = 0;
+
+                like = likelihood(new_path, data, parm);
+                dgn.log_likelihood = like.log_likelihood;
+                prior = smcprior(new_path, parm, data);
+                dgn.log_prior = prior.density;
+                deallocatePriorData(prior);
+                dgn.log_posterior = dgn.log_likelihood + dgn.log_prior;
+                deallocateLikelihood(like);
+
+                //diagnostics that do not apply
+                dgn.alpha = -1;
+                dgn.irreducibility = -1;
+                dgn.cardinality_ratio = -1;
+                dgn.u = -1;
+                dgn.current_log_likelihood = -1;
+                dgn.current_log_prior = -1;
+                dgn.proposed_log_likelihood = -1;
+                dgn.proposed_log_prior = -1;
+                dgn.proposed_number_of_free_times = -1;
+                dgn.current_number_of_free_times = -1;
+                dgn.proposed_free_time_density = -1;
+                dgn.current_free_time_density = -1;
+                dgn.proposed_recombination_density = -1;
+                dgn.current_recombination_density = -1;
+
+                out.data = dgn;
+                out.path = createPathCopy(new_path);
+
+                //write diagnostics
+                writeDiagnosticsFile(dgn);
+
+//                chain[iter] = out;
+                chain[chain_length] = out;
+
+                chain_length++;
+                iter += bp.length;
+
+//                free(temp_summary);
+                deallocatePath(new_path);
+//                path = chain[iter - 1].path;
+                path = chain[chain_length - 1].path;
+//                end = clock();
+//                cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+//                printf("Time taken for combining is %f\n", cpu_time_used);
+
+                if (parm.verb == 1)
+                    printf("ITERATION %ld\n", iter);
+                else {
+                    printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", iter, N);
+                    fflush(stdout);
                 }
-            }
-            if (iter >= N)
-                break;
-        }
-    }
+                //				appendChainTikzFile(chain[iter - 1].path, data, 0);
+                //				writeTikzTexFileForTreePath(NULL, path.tree_path, path.opers, NULL, NULL, NULL,
+                //						path.sites, path.rec_times, path.path_len);
 
-//	closeChainTikzFile();
+                if (j==2) {
+                    chain[chain_length -1].full_scan = 1;
+//                    chain[iter - 1].full_scan = 1;
+                    mrca = timesToMRCA(path);
+                    writeMrcaToFile(mrca);
+                    deallocateMRCA(mrca);
+                    writePathToChainFile(path);
+                    full_scan_count++;
+//                    map(chain, iter, full_scan_count, data);
+                    map(chain, chain_length, full_scan_count, data);
+                }
+                else {
+//                    chain[iter - 1].full_scan = 0;
+                    chain[chain_length - 1].full_scan = 0;
+                }
 
-    deallocateChain(chain, iter);
-//	deleteBridgePoints(bp);
+                if (iter >= N)
+                    break;
+                //				getchar();
+            } //for loop for j
+        } //closing brace for segment sampler
+        if (iter >= N)
+            break;
+    } //closing brace for while (true)
+
+    //	closeChainTikzFile();
+//    deallocateChain(chain, iter);
+    deallocateChain(chain, chain_length);
+    clock_t total_program_end = clock();
+    double total_program_time = (double)(total_program_end - total_program_begin) / CLOCKS_PER_SEC;
+    printf("\n Total time for the entire program is %f seconds\n",total_program_time);
+    printf("\n Total parallel time is %f seconds\n", total_parallel_time);
+
+    //	deleteBridgePoints(bp);
     deleteData(data);
+//    free(temp_summary);
     free(bp_one.points);
     free(bp_two.points);
     free(bp_three.points);

@@ -152,10 +152,10 @@ long jittering(struct MCMCSummary *chain, long it, long max_it, struct Parameter
 		writeDiagnosticsFile(dgn);
 		chain[it - 1].data = dgn;
 
-		if (parm.verb == 0) {
-			printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", it, max_it);
-			fflush(stdout);
-		}
+//		if (parm.verb == 0) {
+//			printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", it, max_it);
+//			fflush(stdout);
+//		}
 
 //		appendChainTikzFile(chain[it - 1].path, data, 0);
 
@@ -283,6 +283,9 @@ struct MCMCDiagnostics calculateJitterAlpha(struct Smc path_p, struct Smc path_c
 
 	dgn.alpha = like * prior * rec_time * extra;
 	dgn.alpha = dgn.alpha > 1 ? 1 : dgn.alpha;
+	dgn.indicators[0] = 'N';
+	dgn.indicators[1] = 'A';
+	dgn.indicators[2] = '\0';
 
 	return dgn;
 }

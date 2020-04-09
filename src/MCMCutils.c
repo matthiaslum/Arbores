@@ -1,7 +1,6 @@
 /*
  * MCMCutils.c
- * Includes parallel functions
- 
+ *
  *  Created on: 14.11.2016
  *      Author: heine
  *  Written by Kari Heine.
@@ -40,6 +39,7 @@
 #include <math.h>
 #include "backtracking.h"
 #include "commandlineoutput.h"
+//#include "/usr/local/include/omp.h"
 #include "constants.h"
 #include "data.h"
 #include "datastructures.h"
@@ -166,7 +166,7 @@ struct MCMCSummary segmentSampler(struct Smc path_c, int seg, struct BridgePoint
 	deallocateLikelihood(like);
 	dgn.irreducibility = irreducibility;
 
-	writeDiagnosticsFile(dgn);
+    writeDiagnosticsFile(dgn);
 
 	out.data = dgn;
 
@@ -179,6 +179,119 @@ struct MCMCSummary segmentSampler(struct Smc path_c, int seg, struct BridgePoint
 
 	return out;
 }
+
+struct segment_output truncatedSegmentSampler(struct Smc path_c, int seg, struct BridgePoints bps,
+                                  struct Data data, struct Parameters parm) {
+
+    struct segment_output out;
+    struct Conditioning condition;
+    struct SamplingSet set;
+    struct SamplingSetData sampling_set_data;
+    struct Smc sgmnt_p, sgmnt_c, sgmnt_c_with_times, sampled_path;
+    long pick;
+    double card_ratio;
+    short irreducibility = 0;
+    struct ShortVector selector_p;
+    struct ShortVector selector_c;
+    struct ShortVector selector_c_with_times;
+
+    verbose = parm.verb;
+
+    assert(checkOperations(path_c) == 1);
+
+    condition = prepareConditioning(seg, bps, data, path_c);
+
+    if (verbose == 1)
+        printSegmentPreamble(condition, data);
+
+    /* We extract a path segment from the current full path and reverse it if we are
+     * in the first segment. This makes the segment comparable with the proposed
+     * segment, which we generate in the reversed direction. */
+    sgmnt_c = extractAndReverseSegment(path_c, condition);
+    assert(checkOperations(sgmnt_c) == 1);
+
+    sampling_set_data = generateSamplingSet(sgmnt_c, condition, data);
+    set = sampling_set_data.set;
+
+    if (verbose == 1)
+        printf("Sampling set cardinalities: %ld %ld\n", set.set_cardinalities[0],
+               set.set_cardinalities[1]);
+
+    /* in standard setting the sampling set is not empty */
+    if (*set.n_paths > 0) {
+
+        pick = drawPathIndex(set);
+        card_ratio = calculateCardinalityRatio(sampling_set_data, pick);
+        sampled_path = set.paths[pick];
+
+    } else {
+        // empty sampling set, the segment is that of the input
+//		printf("Empty sampling set\n");
+        sampled_path = sgmnt_c;
+        card_ratio = (double) 1;
+        irreducibility = 1;
+    }
+    assert(checkTreePathCompletely(sampled_path) == 1);
+
+    if (condition.backward == 1) {
+        // turn the right way
+        sgmnt_p = reversePathSegment(createPathCopy(sampled_path));
+        assert(checkOperations(sgmnt_p) == 1);
+    } else {
+        sgmnt_p = createPathCopy(sampled_path);
+    }
+    assert(checkTreePathCompletely(sgmnt_p) == 1);
+
+    /* free time generation */
+    if (condition.backward == 1)
+        initialTimeProposal(sgmnt_p, parm, 1);
+    else
+        freetimes(sgmnt_p, parm, condition, 1);
+
+    recombinationTimes(sgmnt_p, 1);
+    assert(checkRecombinationTimes(sgmnt_p) == 1);
+
+    //create tree selectors for segments
+    selector_p = createTreeSelector(sgmnt_p, data);
+    sgmnt_p.selector_length = (int) selector_p.length;
+    sgmnt_p.tree_selector = selector_p.v;
+
+    selector_c = createTreeSelector(sgmnt_c, data);
+    sgmnt_c.selector_length = (int) selector_c.length;
+    sgmnt_c.tree_selector = selector_c.v;
+
+    sgmnt_c_with_times = extractSegment(path_c, condition);
+    selector_c_with_times = createTreeSelector(sgmnt_c_with_times, data);
+    sgmnt_c_with_times.selector_length = (int) selector_c_with_times.length;
+    sgmnt_c_with_times.tree_selector = selector_c_with_times.v;
+
+    double alpha = calculateAlphaModified(sgmnt_p, sgmnt_c, sgmnt_c_with_times, data, parm, condition, card_ratio);
+
+    double u = genrand_real3();
+
+    out.accept_indicator = u < alpha ? 1 : 0;
+
+    if (out.accept_indicator == 1) // accept
+        out.new_segment = createPathCopy2(sgmnt_p);
+    else{
+        out.new_segment = createPathCopy2(sgmnt_c_with_times);
+//        if (condition.backward ==1) {
+//            out.new_segment = reversePathSegment(createPathCopy2(sgmnt_c));
+//        }
+//        else{
+//            out.new_segment = createPathCopy2(sgmnt_c);
+//        }
+    }
+    free(condition.M);
+    free(condition.sites);
+    deallocateSamplingSet(set);
+    deallocatePath(sgmnt_c);
+    deallocatePath(sgmnt_c_with_times);
+    deallocatePath(sgmnt_p);
+
+    return out;
+}
+
 
 long drawPathIndex(struct SamplingSet set) {
 
@@ -229,6 +342,37 @@ double calculateCardinalityRatio(struct SamplingSetData ss_data, long pick) {
 	}
 }
 
+struct Smc extractSegment(struct Smc path, struct Conditioning cond){
+    struct Smc out;
+    struct LongVector sites;
+
+    assert(path.selector_length>0 && path.tree_selector != NULL);
+    sites = getSites(cond);
+
+    out = extractToSites(path, sites);
+
+    free(sites.values);
+
+    return out;
+
+}
+
+struct Smc extractSegment_free_times(struct Smc path, struct Conditioning cond){
+    struct Smc out;
+    struct LongVector sites;
+
+    assert(path.selector_length>0 && path.tree_selector != NULL);
+    sites = getSites(cond);
+
+    out = extractToSites(path, sites);
+    assignFreeTimeIndicators(out, cond);
+
+    free(sites.values);
+
+    return out;
+
+}
+
 struct Smc extractAndReverseSegment(struct Smc path, struct Conditioning cond) {
 
 	struct Smc out;
@@ -255,10 +399,20 @@ struct Smc extractAndReverseSegment(struct Smc path, struct Conditioning cond) {
 
 struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, struct BridgePoints bps, struct Data data){
     int initial_site, terminal_site; //might need to change to longs.
+    int i;
     struct FindResult sites;
     struct Smc out;
     struct ShortVector selector;
     short n_global = 0;
+    int max_length = 8;
+
+//    if (new_path.path_len > old_path.path_len){
+//        max_length = new_path.path_len;
+//    }
+//    else{
+//        max_length=old_path.path_len;
+//    }
+    out = createPath(max_length);
 
     //might need to change to Cond for faster performance.
     sites = findSegmentSites(data, bps.points[seg]);
@@ -266,7 +420,9 @@ struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, s
     terminal_site = data.segregating_sites[bps.points[seg].end];
 
     //To find the starting and ending point for the new segment in the new path
-    int new_segment_start, new_segment_end, continuation;
+    int new_segment_start = (-1);
+    int new_segment_end = (-1);
+    int continuation =50;
     for (i = 0; i < new_path.path_len; i++){
         if (new_path.sites[i] >= initial_site){
             new_segment_start = i;
@@ -275,13 +431,22 @@ struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, s
         }
     }
     for (i = continuation; i <new_path.path_len; i++){
-        if (new_path.sites[i] >= terminal_site){
+        if (new_path.sites[i] == terminal_site){
+            new_segment_end = i+1;
+        }
+        if (new_path.sites[i] > terminal_site){
             new_segment_end = i;
             break;
         }
     }
+    if (new_segment_start <0 ) new_segment_start = new_path.path_len;
+    if (new_segment_end < 0 || new_segment_end > (new_path.path_len-1)) {
+        new_segment_end = new_path.path_len; //ensure last operation is not counted.
+//        new_segment_end = new_path.path_len - 1;
+    }
 
     //To find leftmost-portion of old path to keep
+    continuation = 50;
     int start = 0; int dynamic_end = 0;
     for (i = 0; i < old_path.path_len; i++){
         if (old_path.sites[i] >= initial_site){
@@ -290,12 +455,25 @@ struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, s
             break;
         }
     }
+    //check if repeated recombination
+    if (dynamic_end > 0 && new_segment_start< (new_path.path_len-1)){
+        int index = dynamic_end-1;
+        if (old_path.opers[index][0] == new_path.opers[new_segment_start][0] && old_path.opers[index][1] == new_path.opers[new_segment_start][1]){
+            dynamic_end = dynamic_end-1;
+        }
+    }
+
+    if (initial_site > old_path.sites[old_path.path_len-1]){
+        dynamic_end = old_path.path_len;
+//        dynamic_end = old_path.path_len-2;
+    }
 
     //To find rightmost-portion of old path to keep
     int dynamic_start = old_path.path_len; int end = old_path.path_len;
     for (i= continuation; i < old_path.path_len; i++){
-        if (old_path.sites[i] >= terminal_site){
+        if (old_path.sites[i] > terminal_site){
             dynamic_start = i;
+            break;
         }
     }
     //PICTORIALLY:
@@ -304,15 +482,17 @@ struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, s
     //out_path =  ////////////************\\\\\\
 
     //The right-most portion of old_path should contain the last site of which a recombination op which does not exist.
-    //Adding left-most portion of old-path, followed by new segment of new path, then right-most portion of old-path
 
+    //Adding left-most portion of old-path, followed by new segment of new path, then right-most portion of old-path
     int counter = 0;
     /* before the segment */
     for (i = start; i < dynamic_end; i++){
         out.tree_path[counter] = createCopy(old_path.tree_path[i]);
-        out.opers[counter] = createOperationCopy(old_path.opers[i]);
-        out.rec_times[counter] = old_path.rec_times[i];
         out.sites[counter] = old_path.sites[i];
+        if (i < (old_path.path_len- 1)){
+            out.opers[counter] = createOperationCopy(old_path.opers[i]);
+            out.rec_times[counter] = old_path.rec_times[i];
+        }
         counter++;
     }
 
@@ -321,28 +501,36 @@ struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, s
      */
     for (i = new_segment_start; i < new_segment_end; i++){
         out.tree_path[counter] = createCopy(new_path.tree_path[i]);
-        out.opers[counter] = createOperationCopy(new_path.opers[i]);
-        out.rec_times[counter] = new_path.rec_times[i];
         out.sites[counter] = new_path.sites[i];
+        if (i < (new_path.path_len-1)){
+            out.opers[counter] = createOperationCopy(new_path.opers[i]);
+            out.rec_times[counter] = new_path.rec_times[i];
+        }
         counter++;
     }
 
     /* After the segment */
-    for (i = dynamic_start; i <(end-1); i++){
+    for (i = dynamic_start; i <end; i++){
         out.tree_path[counter] = createCopy(old_path.tree_path[i]);
-        out.opers[counter] = createOperationCopy(old_path.opers[i]);
-        out.rec_times[counter] = old_path.rec_times[i];
         out.sites[counter] = old_path.sites[i];
+        if (i < (old_path.path_len-1)) {
+            out.opers[counter] = createOperationCopy(old_path.opers[i]);
+            out.rec_times[counter] = old_path.rec_times[i];
+        }
         counter++;
     }
 
     /* Last tree/site, but no recombination op */
-    int last = end - 1;
-    out.tree_path[counter] = createCopy(old_path.tree_path[last]);
-    out.opers[counter] = createOperationCopy(old_path.opers[last]);
-    out.rec_times[counter] = old_path.rec_times[last];
-    out.sites[counter] = old_path.sites[last];
-    out.path_len = counter + 1;
+    //to add only if the last site is not the same as the output's current last site, and the last site is greater than or equal to the terminal site.
+//    int last = end - 1;
+//    if (out.sites[counter-1] != old_path.sites[last]){
+//        out.tree_path[counter] = createCopy(old_path.tree_path[last]);
+//        out.rec_times[counter] = old_path.rec_times[last];
+//        out.sites[counter] = old_path.sites[last];
+//        counter++;
+//    }
+    out.path_len = counter;
+
 
     /* recalculate the global indexing */
     for (int i = 0; i < out.path_len; i++)
@@ -354,6 +542,80 @@ struct Smc combineFullPaths(struct Smc new_path, struct Smc old_path, int seg, s
 
     deallocatePath(new_path);
     deallocatePath(old_path);
+    return out;
+}
+struct Smc combineSegments( struct segment_output *new_segments, int len, struct Data data){
+    struct Smc out;
+    short n_global = 0;
+    struct ShortVector selector;
+
+    int output_path_length = 0;
+    for (int i =0; i < len; i++){
+        output_path_length += (new_segments[i].new_segment.path_len-1);
+        assert(new_segments[i].new_segment.rec_times!= NULL);
+    }
+    //For the last tree
+    output_path_length += 1;
+    out = createPath(output_path_length);
+    out.path_len = output_path_length;
+    out.selector_length = 0;
+
+    int segment_length;
+    struct Smc first_segment = new_segments[0].new_segment;
+
+    //For the first segment, leave out the last entry of the segment
+    long out_i = 0;
+    for (int i = 0; i< first_segment.path_len - 1; i++) {
+        out.tree_path[out_i] = createCopy(first_segment.tree_path[i]);
+        out.opers[out_i] = createOperationCopy(first_segment.opers[i]);
+        out.rec_times[out_i] = first_segment.rec_times[i];
+        out.sites[out_i] = first_segment.sites[i];
+        out_i++;
+    }
+
+    int last_index_of_prev_segment = out_i;
+    struct Smc previous_segment = first_segment;
+
+    //For the 2nd segment up till the second last segment
+    for (int segment_i = 1; segment_i < (len-1); segment_i++){
+        struct Smc segment = new_segments[segment_i].new_segment;
+        for (int i = 0; i < (segment.path_len-1); i++){
+            out.tree_path[out_i] = createCopy(segment.tree_path[i]);
+            out.opers[out_i] = createOperationCopy(segment.opers[i]);
+            out.rec_times[out_i] = segment.rec_times[i];
+            out.sites[out_i] = segment.sites[i];
+            out_i += 1;
+        }
+        out.sites[last_index_of_prev_segment] = previous_segment.sites[(previous_segment.path_len-1)];
+        previous_segment = segment;
+        last_index_of_prev_segment = out_i;
+    }
+
+    //For the last segment
+    struct Smc last_segment = new_segments[(len-1)].new_segment;
+    for (int i = 0; i < last_segment.path_len; i++){
+        if (i < (last_segment.path_len -1)){
+            out.opers[out_i] = createOperationCopy(last_segment.opers[i]);
+            out.rec_times[out_i] = last_segment.rec_times[i];
+        }
+        out.tree_path[out_i] = createCopy(last_segment.tree_path[i]);
+        out.sites[out_i] = last_segment.sites[i];
+        out_i += 1;
+    }
+    out.sites[last_index_of_prev_segment] = previous_segment.sites[(previous_segment.path_len-1)];
+
+    /* recalculate the global indexing */
+    for (int i = 0; i < out.path_len; i++)
+        assignGlobalIndices(out.global_index, &n_global, i, out.tree_path);
+
+    selector = createTreeSelector(out, data);
+    out.tree_selector = selector.v;
+    out.selector_length = (int) selector.length;
+
+    for (int i = 0; i < len; i++){
+        deallocatePath(new_segments[i].new_segment);
+    }
+
     return out;
 }
 
@@ -538,6 +800,66 @@ struct Smc createCompleteProposal(struct Smc segment, struct Smc path,
 
 	return complete_path;
 }
+
+double calculateAlphaModified(struct Smc segment_p, struct Smc segment_c, struct Smc segment_c_with_times, struct Data data, struct Parameters parm,
+                                      struct Conditioning condition, double extra) {
+
+    struct LikelihoodData like_p, like_c;
+    struct SmcPriorData prior_p, prior_c;
+    struct Recombinations rec_c, rec_p;
+    double like, prior, f_p, f_c, free_time, rec_time, alpha;
+
+    /* free time generation */
+    if (condition.backward == 1) {
+
+        f_p = initialTimeProposal(segment_p, parm, 0);
+        f_c = initialTimeProposal(segment_c, parm, 0);
+    } else {
+
+        f_p = freetimes(segment_p, parm, condition, 0);
+        f_c = freetimes(segment_c, parm, condition, 0);
+    }
+    free_time = f_c / f_p;
+
+    /* recombination times */
+    rec_p = recombinationTimes(segment_p, 0);
+    rec_c = recombinationTimes(segment_c_with_times, 0);
+    rec_time = exp(rec_c.log_p - rec_p.log_p);
+
+    /* likelihood */
+    like_p = likelihood(segment_p, data, parm);
+    like_c = likelihood(segment_c_with_times, data, parm);
+    like = exp(like_p.log_likelihood - like_c.log_likelihood);
+
+    /* prior */
+    prior_p = smcprior(segment_p, parm, data);
+    prior_c = smcprior(segment_c_with_times, parm, data);
+    prior = exp(prior_p.density - prior_c.density);
+
+    /* acceptance probability */
+    alpha = like * prior * free_time * rec_time * extra;
+    alpha = alpha > 1 ? 1 : alpha;
+
+    if (verbose == 1) {
+        printf("Acceptance probability\n----------------------\n");
+        printf("%20s: %15.5e %15.5e --> %1.5f\n", "Likelihood", like_p.log_likelihood,
+               like_c.log_likelihood, like);
+        printf("%20s: %15.5e %15.5e --> %1.5f\n", "Prior", prior_p.density, prior_c.density,
+               prior);
+        printf("%20s: %15.5e %15.5e --> %1.5f\n", "Free times", f_c, f_p, free_time);
+        printf("%20s: %15.5e %15.5e --> %1.5f\n", "Recombination times", rec_c.log_p,
+               rec_p.log_p, rec_time);
+        printf("%20s: %15.5e %15.5f\n", "Extra", extra, extra);
+        printf("%20s: %15.5e %15.5f\n", "Alpha", alpha, alpha);
+    }
+    deallocateLikelihood(like_p);
+    deallocateLikelihood(like_c);
+    deallocatePriorData(prior_p);
+    deallocatePriorData(prior_c);
+
+    return alpha;
+}
+
 
 struct MCMCDiagnostics calculateAlpha(struct Smc segment_p, struct Smc path_p,
 		struct Smc segment_c, struct Smc path_c, struct Data data, struct Parameters parm,
@@ -1320,8 +1642,11 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
 		if (verbose == 1)
 			printf("\tSearching with %i operations\n\t                       ", length - 1);
 
-		for (long i = 0; i < domain_size; i++) {
-
+//		omp_set_num_threads(2);
+//		#pragma omp parallel for default(none) shared(aSets, domain, forced) firstprivate(j, length, cond, domain_size) private(new_aSet, aSet)
+        for (long i = 0; i < domain_size; i++) {
+//            printf("Hello World... from thread = %d, i = %d\n",
+//                   omp_get_thread_num(), i);
 			if (verbose == 1) {
 				printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", i + 1,
 						domain_size);
@@ -1341,6 +1666,7 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
 				free(aSet.n_entries);
 				free(aSet.opers);
 
+				//**** Import stuff here
 				aSets.tree_adj_set[i] = new_aSet.trees;
 				aSets.oper_adj_set[i] = extract2DOperations(new_aSet.opers, *new_aSet.n_entries,
 						new_aSet.length);
@@ -1826,8 +2152,12 @@ struct BridgePoints createPhaseTwoBridgePoints(struct Data d) {
 
     bp_two = malloc(sizeof(struct BridgePoint)*6);
     bp_two[0].start = 0; bp_two[0].end = 4;
+//    bp_two[0].start = 0; bp_two[0].end = 5;
     bp_two[1].start = 4; bp_two[1].end = 8;
     bp_two[2].start = 8; bp_two[2].end = 12;
+//    bp_two[1].start = 5; bp_two[1].end = 9;
+//    bp_two[2].start = 9; bp_two[2].end = 13;
+//    bp_two[3].start = 13; bp_two[3].end = 16;
     bp_two[3].start = 12; bp_two[3].end = 16;
     bp_two[4].start = 16; bp_two[4].end = 20;
     bp_two[5].start = 20; bp_two[5].end = 24;
@@ -1837,6 +2167,21 @@ struct BridgePoints createPhaseTwoBridgePoints(struct Data d) {
 
     return bps_two;
 }
+
+//
+//struct BridgePoints createPhaseTwoBridgePoints(struct Data d) {
+//    struct BridgePoints bps_two;
+//    struct BridgePoint *bp_two;
+//
+//    bp_two = malloc(sizeof(struct BridgePoint)*2);
+//    bp_two[0].start = 0; bp_two[0].end = 10;
+////    bp_two[0].start = 0; bp_two[0].end = 5;
+//    bp_two[1].start = 10; bp_two[1].end = 24;
+//    bps_two.points = bp_two;
+//    bps_two.length = 2;
+//
+//    return bps_two;
+//}
 
 struct BridgePoints createPhaseThreeBridgePoints(struct Data d) {
     struct BridgePoints bps_three;
