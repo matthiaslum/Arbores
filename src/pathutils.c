@@ -258,9 +258,13 @@ short *createNoop() {
 }
 
 
-struct Smc_array_version convertPathToArray(struct Smc path, struct Smc_array_version * array_version){
+void convertPathToArray(struct Smc path, struct Smc_array_version * array_version){
 //    struct Smc_array_version array_version;
     array_version->path_len = path.path_len;
+    if (path.path_len > 11) {
+        printf("\nPath length greater than 11, unable to convert to array version\n");
+    }
+
     int path_length = path.path_len;
     for (int i = 0; i < path_length; i++){
         struct Tree t = path.tree_path[i];

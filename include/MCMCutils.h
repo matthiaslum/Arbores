@@ -87,7 +87,7 @@ struct Smc createCompleteProposal(struct Smc segment, struct Smc path,
 		struct Parameters parm, struct Conditioning condition, struct Data data);
 struct Conditioning_array_version copyConditioningToArray(struct Conditioning condition);
 struct Conditioning copyConditioning(struct Conditioning_array_version condition);
-struct arraySegmentOutput convertSegmentOutputToArray (struct segment_output output,  struct arraySegmentOutput * array_version);
+void convertSegmentOutputToArray (struct segment_output output,  struct arraySegmentOutput * array_version);
 struct Smc combineSegments( struct arraySegmentOutput *temp_summary, int len, struct Data data);
 struct Smc extendToFullSequence(struct Smc segment, struct Smc path,
 		struct Conditioning cond, struct Data data);

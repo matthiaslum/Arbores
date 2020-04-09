@@ -97,12 +97,12 @@ struct Smc {
 };
 
 struct Smc_array_version{
-    struct Tree_array_version tree_path[8];
-    short opers[7][2];
-    int sites[8];
-    double rec_times[7];
+    struct Tree_array_version tree_path[11];
+    short opers[10][2];
+    int sites[11];
+    double rec_times[10];
     short path_len;
-    short is_free[8];
+    short is_free[11];
 };
 
 
@@ -409,7 +409,7 @@ struct MCMCDiagnostics {
     double cardinality_ratio;
     short irreducibility;
     double u;
-    char indicators[7];
+    char indicators[8];
 };
 
 struct NonIdentityOps {

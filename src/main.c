@@ -40,6 +40,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <time.h>
 #include <mpi.h>
 #include <unistd.h>
 #include <stdbool.h>
@@ -112,7 +113,12 @@ int main(int argc, const char * argv[]) {
     long N, iter = 0, full_scan_count = 0;
     short segment_sampler_on = 1;
 
+    clock_t total_program_begin;
+    clock_t parallel_begin;
+    clock_t parallel_end;
+    double total_parallel_time;
     if (world_rank == 0){
+        total_program_begin = clock();
         printf("Arbores algorithm for simulating ancestral recombination graphs ");
         printf("conditional of observed DNA polymorphism data.\n");
         printf("Copyright (c) 2016, Kari Heine, Maria De Iorio, Alex Beskos, Ajay Jasra, David Balding\n\n");
@@ -150,6 +156,7 @@ int main(int argc, const char * argv[]) {
         printData(&data);
 
     path = initialisation(data, parm);
+    checkOperations(path);
 
     /* If initialization introduces recombinations at sites that are not
      * segregating, include non-segregating sites as segregating
@@ -166,7 +173,7 @@ int main(int argc, const char * argv[]) {
     struct BridgePoints all_bp[3] = {bp_one, bp_two, bp_three};
 
     if (world_rank ==0){
-        printf("%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
+        printf("\n%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
     }
 //	printf("Segregating sites\n");
 //	printIntArray(data.segregating_sites, 1, data.n_sites,bp_one 1);
@@ -251,7 +258,7 @@ int main(int argc, const char * argv[]) {
         }
 //        MPI_Barrier(MPI_COMM_WORLD);
         MPI_Bcast(&iter, 1, MPI_INT, 0, MPI_COMM_WORLD);
-        printf("Broadcasted Iter, iter = %d\n", iter);
+//        printf("Broadcasted Iter, iter = %d\n", iter);
 
         if (iter >= N)
             break;
@@ -261,8 +268,10 @@ int main(int argc, const char * argv[]) {
             for (int j = 0; j < 3; j++) {
                 bp = all_bp[j];
 
-                if (world_rank == 0)
+                if (world_rank == 0){
                     convertPathToArray(chain[chain_length-1].path, &old_path_array_form);
+                    parallel_begin = clock();
+                }
 
 
 //                MPI_Barrier(MPI_COMM_WORLD);
@@ -293,6 +302,10 @@ int main(int argc, const char * argv[]) {
                         else if (temp_summary[i].accept_indicator == 0)
                             dgn.indicators[i] ='0';
                     }
+                    dgn.indicators[bp.length] = '\0';
+                    parallel_end = clock();
+                    total_parallel_time += ((double)(parallel_end - parallel_begin) / CLOCKS_PER_SEC);
+
 
                     assert(checkCompatibility(new_path, data) == 1);
 
@@ -321,6 +334,8 @@ int main(int argc, const char * argv[]) {
                     deallocateLikelihood(like);
 
                     //diagnostics that do not apply
+                    writeDiagnosticsFile(dgn);
+
                     dgn.alpha = -1;
                     dgn.irreducibility = -1;
                     dgn.cardinality_ratio = -1;
@@ -379,6 +394,10 @@ int main(int argc, const char * argv[]) {
     }
     if (world_rank ==0){
         deallocateChain(chain, chain_length);
+        clock_t total_program_end = clock();
+        double total_program_time = (double)(total_program_end - total_program_begin) / CLOCKS_PER_SEC;
+        printf("\n Total time for the entire program is %f seconds\n",total_program_time);
+        printf("\n Total parallel time is %f seconds\n", total_parallel_time);
     }
     deleteData(data);
     free(bp_one.points);

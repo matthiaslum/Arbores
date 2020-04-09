@@ -57,6 +57,7 @@
 #include "timeadjustment.h"
 #include "treeutils.h"
 #include "utils.h"
+//#include <mpi.h>
 
 //static short synchronising = 1;
 static short verbose = 0;
@@ -416,12 +417,10 @@ struct Conditioning copyConditioning(struct Conditioning_array_version condition
     return out;
 }
 
-struct arraySegmentOutput convertSegmentOutputToArray (struct segment_output output,  struct arraySegmentOutput * array_version){
-    struct arraySegmentOutput output_array;
-    output_array.new_segment = convertPathToArray(output.new_segment, &(array_version->new_segment));
-    output_array.accept_indicator = output.accept_indicator;
+void convertSegmentOutputToArray (struct segment_output output,  struct arraySegmentOutput * array_version){
+    convertPathToArray(output.new_segment, &(array_version->new_segment));
+    array_version->accept_indicator = output.accept_indicator;
 
-    return output_array;
 }
 
 struct Smc combineSegments( struct arraySegmentOutput *new_segments, int len, struct Data data){
@@ -454,8 +453,8 @@ struct Smc combineSegments( struct arraySegmentOutput *new_segments, int len, st
         out_i++;
     }
 
-//    int last_index_of_prev_segment = out_i;
-//    struct Smc_array_version * previous_segment = first_segment;
+    int last_index_of_prev_segment = out_i;
+    struct Smc_array_version * previous_segment = first_segment;
 
     //For the 2nd segment up till the second last segment
     for (int segment_i = 1; segment_i < (len-1); segment_i++){
@@ -467,9 +466,9 @@ struct Smc combineSegments( struct arraySegmentOutput *new_segments, int len, st
             out.sites[out_i] = segment->sites[i];
             out_i += 1;
         }
-//        out.sites[last_index_of_prev_segment] = previous_segment.sites[(previous_segment.path_len-1)];
-//        previous_segment = segment;
-//        last_index_of_prev_segment = out_i;
+        out.sites[last_index_of_prev_segment] = previous_segment->sites[(previous_segment->path_len-1)];
+        previous_segment = segment;
+        last_index_of_prev_segment = out_i;
     }
 
     //For the last segment
@@ -483,7 +482,7 @@ struct Smc combineSegments( struct arraySegmentOutput *new_segments, int len, st
         out.sites[out_i] = last_segment->sites[i];
         out_i += 1;
     }
-//    out.sites[last_index_of_prev_segment] = previous_segment.sites[(previous_segment.path_len-1)];
+    out.sites[last_index_of_prev_segment] = previous_segment->sites[(previous_segment->path_len-1)];
 
     /* recalculate the global indexing */
     for (int i = 0; i < out.path_len; i++)
@@ -496,6 +495,7 @@ struct Smc combineSegments( struct arraySegmentOutput *new_segments, int len, st
 //    for (int i = 0; i < len; i++){
 //        deallocatePath(new_segments[i].new_segment);
 //    }
+
     return out;
 }
 
@@ -1517,7 +1517,7 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
 	aSets.n_sets = domain_size;
 	long start_index = 0;
 
-	while (aSets.n_active == 0 && length <= MAX_STEPS + 1) {
+    while (aSets.n_active == 0 && length <= MAX_STEPS + 1) {
 
 		if (verbose == 1)
 			printf("\tSearching with %i operations\n\t                       ", length - 1);
@@ -1546,14 +1546,13 @@ struct AdjacencySets createAdjacencySetsRecursively(struct Tree *domain, long do
 				aSets.tree_adj_set[i] = new_aSet.trees;
 				aSets.oper_adj_set[i] = extract2DOperations(new_aSet.opers, *new_aSet.n_entries,
 						new_aSet.length);
-
 				free(new_aSet.opers);
 
 			} else {
 				new_aSet = aSet;
 				aSets.tree_adj_set[i] = aSet.trees;
 				aSets.oper_adj_set[i] = aSet.opers;
-			}
+            }
 
 			aSets.set_size[i] = *new_aSet.n_entries;
 			aSets.n_active = aSets.set_size[i] > 0 ? aSets.n_active + 1 : aSets.n_active;
