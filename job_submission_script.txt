@@ -1,0 +1,17 @@
+#!/bin/bash
+
+#PBS -P Arbores
+#PBS -q short
+#PBS -l select=1:ncpus=1:mem=15GB
+#PBS -j oe
+#PBS -N original_seed_1
+###  -N Job_Name: seed1
+
+cd $PBS_O_WORKDIR;   ## Change to the working dir in the exec host
+
+##--- Put your exec/application commands below ---
+##--- For example:
+
+gcc -std=c99 -I../include main.c ARGdecomposer.c MCMCutils.c backtracking.c commandlineoutput.c constants.c data.c debugging.c exhaustiveSearch.c fileaccess.c freeTimes.c graph2tikz.c initialTimeProposal.c initialisation.c jittering.c likelihood.c mt19937ar.c pathutils.c randomness.c recombinationTimes.c results.c shrub.c smcPrior.c sorting.c timeadjustment.c treeutils.c utils.c -lm -o Arbores
+
+./Arbores arb_data4.txt 200000 1e-8 0.001 1 output_file
