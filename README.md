@@ -16,9 +16,10 @@ https://github.com/heinekmp/Arbores
 
 1. Change directory into the *src*.
 2. Compile the program by running the following command: 
+
 **mpicc -std=c99 -I../include main.c ARGdecomposer.c MCMCutils.c backtracking.c commandlineoutput.c constants.c data.c debugging.c exhaustiveSearch.c fileaccess.c freeTimes.c graph2tikz.c initialTimeProposal.c initialisation.c jittering.c likelihood.c mt19937ar.c pathutils.c randomness.c recombinationTimes.c results.c shrub.c smcPrior.c sorting.c timeadjustment.c treeutils.c utils.c -lm -o Parbores_MW**
 
-This compiles the program with the name Parbores_MW, located in the src folder. The toy dataset we work with is arb_data4.txt.
+The above line compiles the executable with the name *Parbores_MW*, located in the src folder. The toy dataset we work with is arb_data4.txt.
 
 3. Run the program with the following arguments. The arguments are the same as the original Arbores. For detailed explanation, look into the manual found in the *doc* file. We add the *mpicc* wrapper and specify the number of processes to execute the program. The following shows a sample line of execution.
 
