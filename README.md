@@ -5,7 +5,7 @@ recombination graphs (ARG's) from a Bayesian posterior distribution for given
 DNA polymorphism data. The original Arbores can be found here:
 https://github.com/heinekmp/Arbores
 
-**When checking out this branch, note that it is an en-dash and not a hyphen**
+**When checking out this branch, note that it is an en-dash and not a hyphen.**
 
 ## Requirements
 
