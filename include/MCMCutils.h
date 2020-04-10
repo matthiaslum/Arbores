@@ -89,7 +89,7 @@ struct Conditioning_array_version copyConditioningToArray(struct Conditioning co
 struct Conditioning copyConditioning(struct Conditioning_array_version condition);
 void convertSegmentOutputToArray (struct segment_output output,  struct arraySegmentOutput * array_version);
 struct Smc combineSegments( struct arraySegmentOutput *temp_summary, int len, struct Data data);
-struct MCMCDiagnostics getDiagnostics(struct Data data, struct Parameters parm, struct Smc old_path, struct Smc new_path, struct MCMCDiagnostics dgn);
+struct MCMCDiagnostics getDiagnostics(struct Data data, struct Parameters parm, struct Smc new_path, struct MCMCDiagnostics dgn);
 struct Smc extendToFullSequence(struct Smc segment, struct Smc path,
 		struct Conditioning cond, struct Data data);
 struct Smc extractSegment(struct Smc path, struct Conditioning cond);
