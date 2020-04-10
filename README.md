@@ -5,6 +5,8 @@ recombination graphs (ARG's) from a Bayesian posterior distribution for given
 DNA polymorphism data. The original Arbores can be found here:
 https://github.com/heinekmp/Arbores
 
+**When checking out this branch, note that it is an en-dash and not a hyphen**
+
 ## Requirements
 
 1. Ensure that you have a **mpicc** compiler installed. Any type *mpicc* is fine. However, the one we use is *MVAPICH* for the *C* programming language.
