@@ -257,99 +257,6 @@ short *createNoop() {
 	return out;
 }
 
-
-void convertPathToArray(struct Smc path, struct Smc_array_version * array_version){
-//    struct Smc_array_version array_version;
-
-    array_version->path_len = path.path_len;
-    int path_length = path.path_len;
-    for (int i = 0; i < path_length; i++){
-        struct Tree t = path.tree_path[i];
-        short n_b = (t.n_nodes + 1) / 2 - 1;
-        array_version->tree_path[i].n_nodes = t.n_nodes;
-
-        for (int j = 0; j < n_b; j++) {
-            array_version->tree_path[i].C[j] = t.C[j];
-            array_version->tree_path[i].C[j + n_b] = t.C[j + n_b];
-            array_version->tree_path[i].times[j] = t.times[j];
-        }
-        array_version->is_free[i] = path.is_free[i];
-        array_version->sites[i] = path.sites[i];
-    }
-    for (int i = 0; i < (path_length -1); i++){
-        array_version->rec_times[i] = path.rec_times[i];
-        array_version->opers[i][0] = path.opers[i][0];
-        array_version->opers[i][1] = path.opers[i][1];
-    }
-//    return array_version;
-}
-
-struct Smc convertPathArrayToSmc (struct Smc_array_version array_version, struct Data data) {
-
-    struct Smc copy;
-    struct ShortVector selector;
-    short n_global = 0;
-
-    short nb = (array_version.tree_path[0].n_nodes + 1) / 2 - 1;
-    copy.path_len = array_version.path_len;
-
-    /* Trees */
-    copy.tree_path = malloc(sizeof(struct Tree) * array_version.path_len);
-    for (int i = 0; i < array_version.path_len; i++) {
-        copy.tree_path[i] = createCopyFromTreeArray(array_version.tree_path[i]);
-    }
-
-    /* recalculate the global indexing */
-    copy.global_index = malloc(sizeof(short *) * copy.path_len);
-    for (int i = 0; i < copy.path_len; i++)
-        assignGlobalIndices(copy.global_index, &n_global, i, copy.tree_path);
-
-    /* opers */
-    if (array_version.opers != NULL) {
-        copy.opers = malloc(sizeof(short *) * (array_version.path_len - 1));
-        for (int i = 0; i < array_version.path_len - 1; i++) {
-            copy.opers[i] = malloc(sizeof(short) * 2);
-            copy.opers[i][0] = array_version.opers[i][0];
-            copy.opers[i][1] = array_version.opers[i][1];
-        }
-    } else {
-        copy.opers = NULL;
-    }
-
-    /* recombination times */
-    if (array_version.rec_times != NULL) {
-        copy.rec_times = malloc(sizeof(double) * (array_version.path_len - 1));
-        for (int i = 0; i < array_version.path_len - 1; i++)
-            copy.rec_times[i] = array_version.rec_times[i];
-    } else {
-        copy.rec_times = NULL;
-    }
-
-    /* recombination sites */
-    if (array_version.sites != NULL) {
-        copy.sites = malloc(sizeof(int) * array_version.path_len);
-        for (int i = 0; i < array_version.path_len; i++)
-            copy.sites[i] = array_version.sites[i];
-    } else {
-        copy.sites = NULL;
-    }
-
-    selector = createTreeSelector(copy, data);
-    copy.tree_selector = selector.v;
-    copy.selector_length = (int) selector.length;
-
-    if (array_version.is_free != NULL) {
-        copy.is_free = malloc(sizeof(short) * array_version.path_len);
-        for (int i = 0; i < array_version.path_len; i++)
-            copy.is_free[i] = array_version.is_free[i];
-    } else {
-        copy.is_free = NULL;
-    }
-
-    return copy;
-}
-
-
 struct Smc createPath(long length) {
 
 	struct Smc out;
@@ -390,7 +297,7 @@ struct Smc createPathCopy(const struct Smc path) {
 		copy.global_index = NULL;
 	}
 
-    /* opers */
+	/* opers */
 	if (path.opers != NULL) {
 		copy.opers = malloc(sizeof(short *) * (path.path_len - 1));
 		for (int i = 0; i < path.path_len - 1; i++) {
@@ -419,8 +326,7 @@ struct Smc createPathCopy(const struct Smc path) {
 		copy.sites = NULL;
 	}
 
-    /* tree selector */
-
+	/* tree selector */
 	if (path.tree_selector != NULL) {
 		copy.tree_selector = malloc(sizeof(short) * path.selector_length);
 		for (int i = 0; i < copy.selector_length; i++)

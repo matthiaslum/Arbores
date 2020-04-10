@@ -407,7 +407,7 @@ struct Tree createTree(short n_leaves) {
 
 	short n_b = n_leaves - 1;
 	struct Tree t;
-	t.C = malloc(sizeof(short) * 2 * n_b); //All the left leaves first, followed by the right leaves.
+	t.C = malloc(sizeof(short) * 2 * n_b);
 	t.times = malloc(sizeof(double) * n_b);
 	t.n_nodes = 2 * n_leaves - 1;
 	return t;
@@ -526,48 +526,6 @@ void copyTree(struct Tree *t_dst, struct Tree t_src) {
 	t_dst->n_nodes = t_src.n_nodes;
 }
 
-
-void copyTreeToTreeArray (struct Tree t, struct Tree_array_version * tree_array){
-    short n_b = (t.n_nodes + 1) / 2 - 1;
-    tree_array->n_nodes = t.n_nodes;
-    for (int j = 0; j < n_b; j++) {
-        tree_array->C[j] = t.C[j];
-        tree_array->C[j + n_b] = t.C[j + n_b];
-        tree_array->times[j] = t.times[j];
-    }
-}
-
-//version 2 assigns a new tree array in memory whereas version 1 uses a reference.
-struct Tree_array_version copyTreeToTreeArray_v2 (struct Tree t){
-    struct Tree_array_version out;
-    short n_b = (t.n_nodes + 1) / 2 - 1;
-    out.n_nodes = t.n_nodes;
-    for (int j = 0; j < n_b; j++) {
-        out.C[j] = t.C[j];
-        out.C[j + n_b] = t.C[j + n_b];
-        out.times[j] = t.times[j];
-    }
-    return out;
-}
-
-
-struct Tree createCopyFromTreeArray(struct Tree_array_version t) {
-
-    struct Tree out;
-    short n_b = (t.n_nodes + 1) / 2 - 1;
-
-    out.C = malloc(sizeof(short) * n_b * 2);
-    out.times = malloc(sizeof(double) * n_b);
-    out.n_nodes = t.n_nodes;
-
-    for (int i = 0; i < n_b; i++) {
-        out.C[i] = t.C[i];
-        out.C[i + n_b] = t.C[i + n_b];
-        out.times[i] = t.times[i];
-    }
-    return out;
-}
-
 struct Tree createCopy(struct Tree t) {
 
 	struct Tree out;
@@ -584,7 +542,6 @@ struct Tree createCopy(struct Tree t) {
 	}
 	return out;
 }
-
 
 void computeBranchwidth(struct Tree t, short node, short *bw) {
 

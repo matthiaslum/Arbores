@@ -625,29 +625,28 @@ void writeTikzFileForMapPath(struct Smc map_path) {
 
 void writeDiagnosticsFile(struct MCMCDiagnostics dgn) {
 
-    FILE *file = fopen(diagnostics_full_path, "a");
-    fprintf(file, "%15.10e ", dgn.alpha); // 1
-    fprintf(file, "%15.10e ", dgn.current_free_time_density);
-    fprintf(file, "%15.10e ", dgn.proposed_free_time_density);
-    fprintf(file, "%15.10e ", dgn.current_log_likelihood);
-    fprintf(file, "%15.10e ", dgn.proposed_log_likelihood); // 5
-    fprintf(file, "%15.10e ", dgn.current_log_prior);
-    fprintf(file, "%15.10e ", dgn.proposed_log_prior);
-    fprintf(file, "%15hd ", dgn.proposed_number_of_free_times);
-    fprintf(file, "%15hd ", dgn.current_number_of_free_times);
-    fprintf(file, "%15hd ", dgn.proposed_number_of_recombinations); //10
-    fprintf(file, "%15hd ", dgn.current_number_of_recombinations);
-    fprintf(file, "%15hd ", dgn.accept_indicator);
-    fprintf(file, "%15hd ", dgn.jitter_step);
-    fprintf(file, "%15.10e ", dgn.log_likelihood); // 14
-    fprintf(file, "%15.10e ", dgn.log_prior); // 15
-    fprintf(file, "%15.10e ", dgn.log_posterior); // 16
-    fprintf(file, "%15.10e ", dgn.cardinality_ratio); // 17
-    fprintf(file, "%15.10e ", dgn.proposed_recombination_density); // 18
-    fprintf(file, "%15.10e ", dgn.current_recombination_density); // 19
-    fprintf(file, "%15hd ", dgn.irreducibility); // 20
-    fprintf(file, "%15.10e ", dgn.u); //21
-    fprintf(file, "%s ", dgn.indicators); //22
-    fprintf(file, "\n");
-    fclose(file);
+	FILE *file = fopen(diagnostics_full_path, "a");
+	fprintf(file, "%15.10e ", dgn.alpha); // 1
+	fprintf(file, "%15.10e ", dgn.current_free_time_density);
+	fprintf(file, "%15.10e ", dgn.proposed_free_time_density);
+	fprintf(file, "%15.10e ", dgn.current_log_likelihood);
+	fprintf(file, "%15.10e ", dgn.proposed_log_likelihood); // 5
+	fprintf(file, "%15.10e ", dgn.current_log_prior);
+	fprintf(file, "%15.10e ", dgn.proposed_log_prior);
+	fprintf(file, "%15hd ", dgn.proposed_number_of_free_times);
+	fprintf(file, "%15hd ", dgn.current_number_of_free_times);
+	fprintf(file, "%15hd ", dgn.proposed_number_of_recombinations); //10
+	fprintf(file, "%15hd ", dgn.current_number_of_recombinations);
+	fprintf(file, "%15hd ", dgn.accept_indicator);
+	fprintf(file, "%15hd ", dgn.jitter_step);
+	fprintf(file, "%15.10e ", dgn.log_likelihood); // 14
+	fprintf(file, "%15.10e ", dgn.log_prior); // 15
+	fprintf(file, "%15.10e ", dgn.log_posterior); // 16
+	fprintf(file, "%15.10e ", dgn.cardinality_ratio); // 17
+	fprintf(file, "%15.10e ", dgn.proposed_recombination_density); // 18
+	fprintf(file, "%15.10e ", dgn.current_recombination_density); // 19
+	fprintf(file, "%15hd ", dgn.irreducibility); // 20
+	fprintf(file, "%15.10e ", dgn.u); //21
+	fprintf(file, "\n");
+	fclose(file);
 }

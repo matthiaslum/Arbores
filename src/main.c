@@ -1,5 +1,3 @@
-
-
 /*
  * main.c
  *
@@ -41,7 +39,6 @@
 #include <assert.h>
 #include <stdio.h>
 #include <time.h>
-#include <mpi.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <sys/stat.h>
@@ -67,6 +64,7 @@
 #include "timeadjustment.h"
 #include "treeutils.h"
 #include "utils.h"
+#include <time.h>
 
 
 int *intArray;
@@ -78,375 +76,202 @@ void deleteBridgePoints(struct BridgePoints bp);
 void deleteData(struct Data d);
 
 int main(int argc, const char * argv[]) {
-    MPI_Init(NULL, NULL);
-    // Get the number of processes and the rank of each process
-    int world_size; int world_rank;
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-
-    // Get the name of the processor
-    char processor_name[MPI_MAX_PROCESSOR_NAME];
-    int name_len;
-    MPI_Get_processor_name(processor_name, &name_len);
-
-    // Print off a hello world message
-    printf("Hello world from processor %s, rank %d out of %d processors\n",
-           processor_name, world_rank, world_size);
-
-    MPI_Group world_group;
-    MPI_Comm_group(MPI_COMM_WORLD, &world_group);
-    int n = 7;
-    const int ranks[7] = {0, 1, 2, 3, 4, 5, 6};
-
-    // Construct a group containing all the 7 processes that will be calling SegmentSampler
-    MPI_Group core_group;
-    MPI_Group_incl(world_group, 7, ranks, &core_group);
-
-    // Create a new communicator for these 7 processes based on the group
-    MPI_Comm core_comm;
-    MPI_Comm_create_group(MPI_COMM_WORLD, core_group, 0, &core_comm);
-
-    int core_rank = -1, core_size = -1;
-
-    if (MPI_COMM_NULL != core_comm) {
-        MPI_Comm_rank(core_comm, &core_rank);
-        MPI_Comm_size(core_comm, &core_size);
-    }
-
-    int color = world_rank % 7;
-    MPI_Comm helper_comm;
-    MPI_Comm_split(MPI_COMM_WORLD, color, world_rank, &helper_comm);
-
-    int helper_rank, helper_size;
-    MPI_Comm_rank(helper_comm, &helper_rank);
-    MPI_Comm_size(helper_comm, &helper_size);
-
-    printf("WORLD RANK/SIZE: %d/%d \t CORE RANK/SIZE: %d/%d \t HELPER RANK/SIZE: %d/%d\n",
-           world_rank, world_size, core_rank, core_size, helper_rank, helper_size);
-
-
-//    intArray = malloc(sizeof(int) * 5);
-//    intArray[0] = 1;
-//
-//    printf("Array entry for rank %d is %d\n", world_rank, intArray[0]);
-
-
-    char *filename;
-    struct Data data;
-    struct Smc path;
-    struct BridgePoints bp;
-    struct MCMCSummary *chain;
-    struct Parameters parm;
-    struct LikelihoodData like_data;
-    struct SmcPriorData prior_data;
-    struct MRCA mrca;
-    long N, iter = 0, full_scan_count = 0;
-    short segment_sampler_on = 1;
-
+    clock_t start, end;
+    double cpu_time_used;
+	char *filename;
+	struct Data data;
+	struct Smc path;
+	struct BridgePoints bp;
+	struct MCMCSummary *chain;
+	struct Parameters parm;
+	struct LikelihoodData like_data;
+	struct SmcPriorData prior_data;
+	struct MRCA mrca;
+	long N, iter = 0, full_scan_count = 0;
+	short segment_sampler_on = 1;
     clock_t total_program_begin;
     clock_t parallel_begin;
     clock_t parallel_end;
     double total_parallel_time;
-    if (world_rank == 0){
-        total_program_begin = clock();
-        printf("Arbores algorithm for simulating ancestral recombination graphs ");
-        printf("conditional of observed DNA polymorphism data.\n");
-        printf("Copyright (c) 2016, Kari Heine, Maria De Iorio, Alex Beskos, Ajay Jasra, David Balding\n\n");
 
-        if (argc < 6) {
-            printf("Incorrect number of arguments. See instructions for help.\n");
-            return 0;
-        }
-    }
+    total_program_begin = clock();
 
-    filename = (char *) argv[1];
-    N = (long) atol(argv[2]);
-    parm.mu = (double) atof(argv[3]); //1.3e-6;
-    parm.rho = (double) atof(argv[4]); //3.5e-7;
-    parm.n_eff = 1; //atoi(argv[5]); // 10000;
-    init_genrand((unsigned long) atoi(argv[5]));
-    result_folder = (char*) argv[6];
+    printf("Arbores algorithm for simulating ancestral recombination graphs ");
+	printf("conditional of observed DNA polymorphism data.\n");
+	printf("Copyright (c) 2016, Kari Heine, Maria De Iorio, Alex Beskos, Ajay Jasra, David Balding\n\n");
 
-    parm.verb = 0;
+	if (argc < 6) {
+		printf("Incorrect number of arguments. See instructions for help.\n");
+		return 0;
+	}
 
-    if (world_rank ==0 ){
-        mkdir(result_folder, S_IRWXU);
-        createResultFullPahts(result_folder);
-    }
+	filename = (char *) argv[1];
+	N = (long) atol(argv[2]);
+	parm.mu = (double) atof(argv[3]); //1.3e-6;
+	parm.rho = (double) atof(argv[4]); //3.5e-7;
+	parm.n_eff = 1; //atoi(argv[5]); // 10000;
+	init_genrand((unsigned long) atoi(argv[5]));
+	result_folder = (char*) argv[6];
 
-    /* Read a data file */
-    data = readData(filename);
+	parm.verb = 0;
 
-    if(data.n_sites >= 30) {
-        printf("WARNING: More than 30 recombinations within the data may cause the algorithm be inaccurate or unstable.\n");
-        printf("Press any key to continue (or Crtl+C to quit).\n");
-        getchar();
-    }
-    if (parm.verb > 0 && data.M != NULL)
-        printData(&data);
+	mkdir(result_folder, S_IRWXU);
+	createResultFullPahts(result_folder);
 
-    path = initialisation(data, parm);
+	/* Read a data file */
+	data = readData(filename);
 
-    /* If initialization introduces recombinations at sites that are not
-     * segregating, include non-segregating sites as segregating
-     * and augment the data accordingly. */
-    data = augmentWithNonSegregatingSites(data, path);
+	if(data.n_sites >= 30) {
+		printf("WARNING: More than 30 recombinations within the data may cause the algorithm be inaccurate or unstable.\n");
+		printf("Press any key to continue (or Crtl+C to quit).\n");
+		getchar();
+	}
+	if (parm.verb > 0 && data.M != NULL)
+		printData(&data);
 
-    if (parm.verb > 0)
-        printData(&data);
+	path = initialisation(data, parm);
 
-//	bp = createBridgePoints(data, BR_LEN);
-    struct BridgePoints bp_one = createPhaseOneBridgePoints(data);
-    struct BridgePoints bp_two = createPhaseTwoBridgePoints(data);
-    struct BridgePoints bp_three = createPhaseThreeBridgePoints(data);
-    struct BridgePoints all_bp[3] = {bp_one, bp_two, bp_three};
+	/* If initialization introduces recombinations at sites that are not
+	 * segregating, include non-segregating sites as segregating
+	 * and augment the data accordingly. */
+	data = augmentWithNonSegregatingSites(data, path);
+	if (parm.verb > 0)
+		printData(&data);
 
-    if (world_rank ==0){
-        printf("\n%i segments\n\n", (bp_one.length + bp_two.length + bp_three.length));
-    }
+	bp = createBridgePoints(data, BR_LEN);
+	printf("%i segments\n\n", bp.length);
 //	printf("Segregating sites\n");
-//	printIntArray(data.segregating_sites, 1, data.n_sites,bp_one 1);
+//	printIntArray(data.segregating_sites, 1, data.n_sites, 1);
 
-    /* Read initial path from file, if file is provided */
-    if (argc >= 8) {
-        createInitFilePath((char *) argv[7]);
-        deallocatePath(path);
-        path = readInitialisationFileRowFormat(data);
-        printf("Initialisation read from a file.\n");
-    }
+	/* Read initial path from file, if file is provided */
+	if (argc >= 8) {
+		createInitFilePath((char *) argv[7]);
+		deallocatePath(path);
+		path = readInitialisationFileRowFormat(data);
+		printf("Initialisation read from a file.\n");
+	}
 
-    assert(checkTreePathCompletely(path) == 1);
-    assert(checkCompatibility(path, data) == 1);
+	assert(checkTreePathCompletely(path) == 1);
+	assert(checkCompatibility(path, data) == 1);
 
-    if (world_rank ==0){
-        chain = malloc(sizeof(struct MCMCSummary) * N);
-        removeMRCAFile();
-        removeChainFile();
-        chain[iter].path = path;
-        chain[iter].full_scan = 0;
-        chain[iter].data.accept_indicator = 1;
-        chain[iter].data.alpha = 1;
-        chain[iter].data.cardinality_ratio = 1;
-        chain[iter].data.current_free_time_density = -1;
-        chain[iter].data.current_log_likelihood = -1;
-        chain[iter].data.current_log_prior = -1;
-        chain[iter].data.current_number_of_free_times = -1;
-        chain[iter].data.current_recombination_density = -1;
-        chain[iter].data.irreducibility = 0;
-        chain[iter].data.jitter_step = 0;
-        like_data = likelihood(path, data, parm);
-        chain[iter].data.log_likelihood = like_data.log_likelihood;
-        prior_data = smcprior(path, parm, data);
-        chain[iter].data.log_prior = prior_data.density;
-        chain[iter].data.log_posterior = like_data.log_likelihood + prior_data.density;
-        deallocateLikelihood(like_data);
-        deallocatePriorData(prior_data);
-        chain[iter].data.proposed_free_time_density = -1;
-        chain[iter].data.proposed_log_likelihood = -1;
-        chain[iter].data.proposed_log_prior = -1;
-        chain[iter].data.proposed_number_of_free_times = -1;
-        chain[iter].data.proposed_number_of_recombinations = countRecombinations(path);
-        chain[iter].data.proposed_recombination_density = -1;
-    }
-    iter++;
+	/* main loop */
+	chain = malloc(sizeof(struct MCMCSummary) * N);
+	removeMRCAFile();
+	removeChainFile();
+
+	chain[iter].path = path;
+	chain[iter].full_scan = 0;
+	chain[iter].data.accept_indicator = 1;
+	chain[iter].data.alpha = 1;
+	chain[iter].data.cardinality_ratio = 1;
+	chain[iter].data.current_free_time_density = -1;
+	chain[iter].data.current_log_likelihood = -1;
+	chain[iter].data.current_log_prior = -1;
+	chain[iter].data.current_number_of_free_times = -1;
+	chain[iter].data.current_recombination_density = -1;
+	chain[iter].data.irreducibility = 0;
+	chain[iter].data.jitter_step = 0;
+	like_data = likelihood(path, data, parm);
+	chain[iter].data.log_likelihood = like_data.log_likelihood;
+	prior_data = smcprior(path, parm, data);
+	chain[iter].data.log_prior = prior_data.density;
+	chain[iter].data.log_posterior = like_data.log_likelihood + prior_data.density;
+	deallocateLikelihood(like_data);
+	deallocatePriorData(prior_data);
+	chain[iter].data.proposed_free_time_density = -1;
+	chain[iter].data.proposed_log_likelihood = -1;
+	chain[iter].data.proposed_log_prior = -1;
+	chain[iter].data.proposed_number_of_free_times = -1;
+	chain[iter].data.proposed_number_of_recombinations = countRecombinations(path);
+	chain[iter].data.proposed_recombination_density = -1;
+	iter++;
 
 //	writeStateToFile(chain,NULL,1);
-    if (world_rank ==0){
-        writePathToChainFile(path);
-    }
-
-    struct Smc old_path;
-    struct Smc path_p;
-    struct Smc combined_path;
-    struct MCMCSummary out;
-    struct MCMCDiagnostics dgn;
-    struct ShortVector selector;
-    struct LikelihoodData like;
-    struct SmcPriorData prior;
-    int chain_length = iter;
-    int old_chain_length;
-    struct arraySegmentOutput temp_summary[7];
-    struct Smc_array_version old_path_array_form;
-    struct arraySegmentOutput to_send;
-    int test = 1;
+	writePathToChainFile(path);
 
 //	initChainTikzFile(chain[iter - 1].path, data);
-    MPI_Barrier(MPI_COMM_WORLD);
-    if (world_rank > 6){
-        long status;
+	if (parm.verb == 0)
+		printf("                     ");
+	while (true) {
+        iter = jittering(chain, iter, N, parm, data);
 
-        while(true) {
+		if (parm.verb == 1)
+			printf("ITERATION %ld\n", iter);
+		path = chain[iter - 1].path;
 
-            MPI_Recv(&status, 1, MPI_LONG, 0, 0, helper_comm, MPI_STATUS_IGNORE);
-//            printf("Status: %d\n", status);
+		if (iter >= N)
+			break;
 
-            if (status == -1)
-                break;
+		if (segment_sampler_on == 1) {
 
-            else if (status > 0)
-                shareWorkloadAdjacencySets(status, helper_comm);
+            parallel_begin = clock();
+            for (int i = 0; i < bp.length; i++) {
+                chain[iter++] = segmentSampler(path, i, bp, data, parm);
+                path = chain[iter - 1].path;
+				if (parm.verb == 1)
+					printf("ITERATION %ld\n", iter);
+				else {
+					printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", iter, N);
+					fflush(stdout);
+				}
+//				appendChainTikzFile(chain[iter - 1].path, data, 0);
+//				writeTikzTexFileForTreePath(NULL, path.tree_path, path.opers, NULL, NULL, NULL,
+//						path.sites, path.rec_times, path.path_len);
+
+				if (i == bp.length - 1) {
+					chain[iter - 1].full_scan = 1;
+					mrca = timesToMRCA(path);
+					writeMrcaToFile(mrca);
+					deallocateMRCA(mrca);
+					writePathToChainFile(path);
+					full_scan_count++;
+					map(chain, iter, full_scan_count, data);
+				} else {
+					chain[iter - 1].full_scan = 0;
+				}
+
+				if (iter >= N)
+					break;
+//				getchar();
+			}
+			if (iter >= N)
+				break;
+            parallel_end = clock();
+            total_parallel_time += ((double)(parallel_end - parallel_begin) / CLOCKS_PER_SEC);
         }
-    }
+	}
 
+//	closeChainTikzFile();
 
-    if (parm.verb == 0)
-        printf("                     ");
-
-
-    while (true){
-        if (world_rank > 6)
-            break;
-
-        if (world_rank ==0){
-            old_chain_length = chain_length;
-            chain_length = jittering(chain, chain_length, N, parm, data);
-            iter += (chain_length - old_chain_length);
-            if (parm.verb == 1)
-                printf("ITERATION %ld\n", iter);
-
-        }
-        MPI_Bcast(&iter, 1, MPI_INT, 0, core_comm);
-//        printf("Broadcasted Iter, iter = %d\n", iter);
-
-        if (iter >= N){
-            if (world_rank < 7) {
-                //send message to helpers to break out;
-                long status = (-1);
-                MPI_Send(&status, 1, MPI_LONG, 1, 0, helper_comm);
-            }
-            break;
-        }
-
-        if (segment_sampler_on == 1) {
-
-            for (int j = 0; j < 3; j++) {
-                bp = all_bp[j];
-
-                if (world_rank == 0){
-                    convertPathToArray(chain[chain_length-1].path, &old_path_array_form);
-                    parallel_begin = clock();
-                }
-
-
-                MPI_Bcast(&old_path_array_form, sizeof(old_path_array_form), MPI_BYTE, 0, core_comm);
-                struct Smc old_path_original = convertPathArrayToSmc(old_path_array_form, data);
-
-                if (world_rank < bp.length){
-                    struct segment_output output = truncatedSegmentSampler(old_path_original, world_rank, bp, data, parm, helper_comm);
-                    convertSegmentOutputToArray(output, &to_send);
-                    deallocatePath(output.new_segment);
-                }
-                deallocatePath(old_path_original);
-
-                MPI_Gather(&to_send, sizeof(to_send), MPI_BYTE, &temp_summary, sizeof(to_send), MPI_BYTE, 0, core_comm);
-
-                if (world_rank == 0){
-                    //Combining of segments
-                    struct MCMCDiagnostics dgn;
-                    struct ShortVector selector;
-                    struct MCMCSummary out;
-
-                    struct Smc new_path = combineSegments(&(temp_summary[0]), bp.length, data);
-
-                    for (int i =0; i < bp.length; i++){
-                        if (temp_summary[i].accept_indicator == 1)
-                            dgn.indicators[i] ='1';
-                        else if (temp_summary[i].accept_indicator == 0)
-                            dgn.indicators[i] ='0';
-                    }
-                    dgn.indicators[bp.length] = '\0';
-                    parallel_end = clock();
-                    total_parallel_time += ((double)(parallel_end - parallel_begin) / CLOCKS_PER_SEC);
-                    assert(checkCompatibility(new_path, data) == 1);
-                    assert(checkTreePathCompletely(new_path) == 1);
-                    assert(checkOperations(new_path) == 1);
-                    new_path = removeNoOps(new_path);
-                    assert(checkOperations(new_path) == 1);
-
-                    if (new_path.tree_selector != NULL)
-                        free(new_path.tree_selector);
-                    selector = createTreeSelector(new_path, data);
-                    new_path.selector_length = (int) selector.length;
-                    new_path.tree_selector = selector.v;
-
-                    dgn = getDiagnostics(data, parm, new_path, dgn);
-
-                    out.data = dgn;
-                    out.path = createPathCopy(new_path);
-
-                    //write diagnostics
-                    writeDiagnosticsFile(dgn);
-                    chain[chain_length] = out;
-
-                    chain_length++;
-                    iter += bp.length;
-
-                    deallocatePath(new_path);
-
-                    if (parm.verb == 1)
-                        printf("ITERATION %ld\n", iter);
-                    else {
-                        printf("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b%10ld/%-10ld", iter, N);
-                        fflush(stdout);
-                    }
-                    if (j==2) {
-                        path = chain[chain_length - 1].path;
-                        chain[chain_length - 1].full_scan = 1;
-                        mrca = timesToMRCA(path);
-                        writeMrcaToFile(mrca);
-                        deallocateMRCA(mrca);
-                        writePathToChainFile(path);
-                        full_scan_count++;
-                        map(chain, chain_length, full_scan_count, data);
-                    }
-                    else
-                        chain[chain_length - 1].full_scan = 0;
-                }
-            }
-            //End of loop j
-        }
-    }
-
-    if (world_rank ==0){
-        deallocateChain(chain, chain_length);
-        clock_t total_program_end = clock();
-        double total_program_time = (double)(total_program_end - total_program_begin) / CLOCKS_PER_SEC;
-        printf("\n Total time for the entire program is %f seconds\n",total_program_time);
-        printf("\n Total parallel time is %f seconds\n", total_parallel_time);
-    }
-
-    MPI_Group_free(&world_group);
-    MPI_Group_free(&core_group);
-    if (world_rank < 7){
-        MPI_Comm_free(&core_comm);
-    }
-    MPI_Comm_free(&helper_comm);
-    deleteData(data);
-    free(bp_one.points);
-    free(bp_two.points);
-    free(bp_three.points);
-    MPI_Finalize();
-    return 0;
+	deallocateChain(chain, iter);
+    clock_t total_program_end = clock();
+    double total_program_time = (double)(total_program_end - total_program_begin) / CLOCKS_PER_SEC;
+    printf("\n Total time for the entire program is %f seconds\n",total_program_time);
+    printf("\n Total parallel time is %f seconds\n", total_parallel_time);
+	deleteBridgePoints(bp);
+	deleteData(data);
+	return 0;
 }
 
 void deallocateChain(struct MCMCSummary *chain, long iter) {
-    for (int i = 0; i < iter; i++) {
-        deallocatePath(chain[i].path);
-        deallocateDiagnostics(chain[i].data);
-    }
-    free(chain);
+	for (int i = 0; i < iter; i++) {
+		deallocatePath(chain[i].path);
+		deallocateDiagnostics(chain[i].data);
+	}
+	free(chain);
 }
 
 void deallocateDiagnostics(struct MCMCDiagnostics diag) {
-    return;
+	return;
 }
 
 void deleteBridgePoints(struct BridgePoints bp) {
-    free(bp.points);
+	free(bp.points);
 }
 
 void deleteData(struct Data d) {
-    free(d.M);
-    free(d.name);
-    free(d.segregating_sites);
+	free(d.M);
+	free(d.name);
+	free(d.segregating_sites);
 }
+
