@@ -309,9 +309,6 @@ int main(int argc, const char * argv[]) {
 
                     assert(checkCompatibility(new_path, data) == 1);
 
-//                    dgn.proposed_number_of_recombinations = countRecombinations(new_path);
-//                    dgn.current_number_of_recombinations = countRecombinations(old_path);
-
                     assert(checkTreePathCompletely(new_path) == 1);
                     assert(checkOperations(new_path) == 1);
                     new_path = removeNoOps(new_path);
@@ -323,38 +320,13 @@ int main(int argc, const char * argv[]) {
                     new_path.selector_length = (int) selector.length;
                     new_path.tree_selector = selector.v;
 
-                    dgn.jitter_step = 0;
-
-                    like = likelihood(new_path, data, parm);
-                    dgn.log_likelihood = like.log_likelihood;
-                    prior = smcprior(new_path, parm, data);
-                    dgn.log_prior = prior.density;
-                    deallocatePriorData(prior);
-                    dgn.log_posterior = dgn.log_likelihood + dgn.log_prior;
-                    deallocateLikelihood(like);
-
-                    //diagnostics that do not apply
-                    writeDiagnosticsFile(dgn);
-
-                    dgn.alpha = -1;
-                    dgn.irreducibility = -1;
-                    dgn.cardinality_ratio = -1;
-                    dgn.u = -1;
-                    dgn.current_log_likelihood = -1;
-                    dgn.current_log_prior = -1;
-                    dgn.proposed_log_likelihood = -1;
-                    dgn.proposed_log_prior = -1;
-                    dgn.proposed_number_of_free_times = -1;
-                    dgn.current_number_of_free_times = -1;
-                    dgn.proposed_free_time_density = -1;
-                    dgn.current_free_time_density = -1;
-                    dgn.proposed_recombination_density = -1;
-                    dgn.current_recombination_density = -1;
+                    dgn = getDiagnostics(data, parm, old_path, new_path, dgn);
 
                     out.data = dgn;
                     out.path = createPathCopy(new_path);
 
                     //write diagnostics
+                    writeDiagnosticsFile(dgn);
 
                     chain[chain_length] = out;
 
