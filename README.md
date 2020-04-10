@@ -27,7 +27,7 @@ The above line compiles the executable with the name *Parbores_MW*, located in t
 
 **mpirun -np 14 ./Parbores_MW arb_data4.txt 20000 1e-8 0.001 1 output_file**
 
-The above line executed Parbores_MW with 14 cores, 7 for the masters and 7 for the workers. It is run for 20,000 iterations, with mutation and recombination rates of 1e-8 and 0.001 respectively. The random seed is 1, and the results are stored in *output_file*. 
+The above line executes Parbores_MW with 14 cores, 7 for the masters and 7 for the workers. It is run for 20,000 iterations, with mutation and recombination rates of 1e-8 and 0.001 respectively. The random seed is 1, and the results are stored in *output_file*. 
 
 The experiments in the written report are executed for 200,000 iterations instead.
 
