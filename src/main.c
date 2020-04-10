@@ -369,7 +369,7 @@ int main(int argc, const char * argv[]) {
                     new_path.selector_length = (int) selector.length;
                     new_path.tree_selector = selector.v;
 
-                    dgn = getDiagnostics(data, parm, old_path, new_path, dgn);
+                    dgn = getDiagnostics(data, parm, new_path, dgn);
 
                     out.data = dgn;
                     out.path = createPathCopy(new_path);

@@ -498,14 +498,11 @@ struct Smc combineSegments( struct arraySegmentOutput *new_segments, int len, st
     return out;
 }
 
-struct MCMCDiagnostics getDiagnostics(struct Data data, struct Parameters parm, struct Smc old_path, struct Smc new_path, struct MCMCDiagnostics dgn){
+struct MCMCDiagnostics getDiagnostics(struct Data data, struct Parameters parm, struct Smc new_path, struct MCMCDiagnostics dgn){
     struct LikelihoodData like;
     struct SmcPriorData prior;
 
     dgn.jitter_step = 0;
-
-    dgn.proposed_number_of_recombinations = countRecombinations(new_path);
-    dgn.current_number_of_recombinations = countRecombinations(old_path);
 
     like = likelihood(new_path, data, parm);
     dgn.log_likelihood = like.log_likelihood;
@@ -533,6 +530,7 @@ struct MCMCDiagnostics getDiagnostics(struct Data data, struct Parameters parm, 
 
     return dgn;
 }
+
 
 
 struct Smc extendToFullSequence(struct Smc segment, struct Smc path,
