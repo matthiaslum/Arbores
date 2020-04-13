@@ -9,7 +9,7 @@ https://github.com/heinekmp/Arbores
 
 ## Requirements
 
-1. Ensure that you have a **mpicc** compiler installed. Any type *mpicc* is fine. However, the one we use is *MVAPICH* for the *C* programming language.
+1. Ensure that you have a **mpicc** compiler installed. Any type of *mpicc* is fine. However, the one we use is *MVAPICH* for the *C* programming language.
 *(Note that the MVAPICH compiler allows negative tags in the sending of packages)*
 2. Ensure that you have **14 cores** on the same node; connected by *Infiniband*. (Best to remotely access high performance computing center)
 3. A terminal that accepts linux commands.
